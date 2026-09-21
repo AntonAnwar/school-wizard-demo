@@ -655,9 +655,11 @@ function repairOrphans(){
 }
 function resetDemo(){
   if(MODE==='real'){
-    askConfirm('مسح بيانات الشعب','سيتم مسح كل الشعب المنشأة فقط — لا يتأثر إعداد المدرسة (المسارات، المعلمون...).',()=>{
-      db.sectionsByYear={}; save(); render(); toast('تم مسح الشعب');
-    },'مسح',true);
+    askConfirm('البدء من جديد','سيُمحى كل شيء: المدرسة، المسارات، المواد، المعلمون، أولياء الأمور، الطلاب، الشعب، والجلسة الحالية. ستعود إلى لوحة الإعداد.',()=>{
+      store.del(LS_KEY);
+      store.del(LS_KEY+'_session');
+      location.href='setup.html';
+    },'مسح الكل',true);
     return;
   }
   askConfirm('إعادة تعيين النموذج','سيُمحى كل ما أنشأته ويعود النموذج إلى بياناته الأصلية.',()=>{
@@ -978,7 +980,7 @@ const App={
   setDashYear,dashTeacher,dashDelete,resetDemo,closeModal,
   openAddSection,addSetGid,addSetLetter,addSetMax,addSetTeacher,doAddSection,closeAddSection,dashMax,repairOrphans
 };
-document.querySelector('.topbar .reset').textContent = MODE==='real' ? '↺ مسح بيانات الشعب' : '↺ إعادة تعيين بيانات النموذج';
+document.querySelector('.topbar .reset').textContent = MODE==='real' ? '↺ البدء من جديد' : '↺ إعادة تعيين بيانات النموذج';
 document.querySelector('.topbar .d').textContent = MODE==='real'
   ? 'يعمل بالبيانات الحقيقية من مسار الإعداد — '+SCHOOL_NAME
   : 'المعالج يعمل فعليًا · بيانات تجريبية · أكمل الإعداد من setup.html';

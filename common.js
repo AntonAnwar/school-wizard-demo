@@ -282,7 +282,10 @@ function loadDemoSchool(){
   saveDB(db);
   return db;
 }
-function resetAllData(){store.del(LS_KEY);}
+function resetAllData(){
+  store.del(LS_KEY);
+  store.del(LS_KEY+'_session');
+}
 
 /* ---------- مكوّنات واجهة مشتركة ---------- */
 function toast(msg,opt={}){
