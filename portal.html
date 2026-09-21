@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>بوابة المدرسة — الدخول</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<div class="topbar">
+  <span class="t">🏫 بوابة المدرسة</span>
+  <span class="d">المعلم · الطالب · ولي الأمر</span>
+  <a class="home" href="setup.html">← لوحة الإعداد</a>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+let view='roles', selRole=null, q='';
+const ROLE_META={
+  teacher:{t:'معلم',ic:'👨‍🏫',d:'إنشاء المهام والاختبارات، تقييم التسليمات، الحضور، الكشوفات، والتواصل',href:'portal-teacher.html'},
+  student:{t:'طالب',ic:'🎒',d:'مهام شعبي، التسليم، العلامات والملاحظات، كشف النتائج، والحضور',href:'portal-student.html'},
+  parent:{t:'ولي أمر',ic:'👨‍👦',d:'متابعة الأبناء: الكشوفات، العلامات، الحضور، والاستفسار من المعلمين',href:'portal-parent.html'}
+};
+const initials=n=>n.split(' ').slice(0,2).map(w=>w[0]).join('');
+
+function counts(){
+  return {teacher:(db.teachers||[]).length,
+    student:(db.students||[]).length,
+    parent:(db.parents||[]).length};
+}
+
+function render(){
+  if(!db.school){
+    $('#app').innerHTML=`
+    <div class="card" style="max-width:620px;margin:60px auto;text-align:center">
+      <div style="font-size:46px">🏗️</div>
+      <h2 style="font-size:19px;margin-top:10px">لم تُنشأ المدرسة بعد</h2>
+      <p class="hint" style="margin:10px 0 20px">البوابة تعمل فوق بنية المدرسة: أكمل إعداد المدرسة والشعب والطلاب أولًا.</p>
+      <a class="btn primary" href="setup.html" style="text-decoration:none">← ابدأ من لوحة الإعداد</a>
+    </div>`;
+    return;
+  }
+
+  const sess=getSession();
+  const sessionCard=sess?`
+    <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div style="flex:1;min-width:220px">
+        <b>مرحبًا، ${esc(displayName(db,{role:sess.role,id:sess.id}))} 👋</b>
+        <p class="hint" style="margin-top:3px">متصل حاليًا بدور: ${ROLE_META[sess.role].t}</p>
+      </div>
+      <a class="btn primary" style="text-decoration:none" href="${ROLE_META[sess.role].href}">متابعة الدخول ←</a>
+      <button class="btn ghost" onclick="T.logout()">تسجيل الخروج</button>
+    </div>`:'';
+
+  if(view==='roles'){
+    const c=counts();
+    $('#app').innerHTML=`
+    <div class="wizhead" style="padding:20px 26px 12px">
+      <div><div class="wiztitle">🏫 ${esc(db.school.name)}</div>
+      <div class="wizsub">${db.school.yearLabel} · اختر دورك لبدء الاستخدام</div></div>
+    </div>
+    <div class="wizbody">
+      ${sessionCard}
+      <div class="rolegrid">
+        ${Object.entries(ROLE_META).map(([r,m])=>`
+        <div class="rolecard" onclick="T.pickRole('${r}')">
+          <div class="ic">${m.ic}</div>
+          <b>دخول كـ${m.t}</b>
+          <p>${m.d}</p>
+          <span class="stchip gray" style="margin-top:10px">${c[r]} ${m.t}</span>
+        </div>`).join('')}
+      </div>
+      <div class="tip" style="margin-top:14px">💡 هذا نموذج تجريبي: لا حاجة لكلمة مرور — اختر الدور ثم هويتك من القائمة. في التطبيق الكامل تكون هناك مصادقة حقيقية وأدوار وصلاحيات.</div>
+    </div>`;
+  } else {
+    const m=ROLE_META[selRole];
+    const ids=selRole==='teacher'?(db.teachers||[]).map(t=>({id:t.id,name:t.name,sub:t.subject,extra:mySections(db,t.id,db.school.yearLabel).length+' شعبة كمربّي'}))
+      :selRole==='student'?(db.students||[]).map(s=>({id:s.id,name:s.name,sub:'',extra:levelName(db,s.gradeId)+(s.sectionKey?' · شعبة '+keyLetter(s.sectionKey):' · غير موزَّع')}))
+      :(db.parents||[]).map(p=>({id:p.id,name:p.name,sub:'',extra:studentsOfParent(db,p.id).length+' من الأبناء'}));
+    const ql=q.trim();
+    const list=ids.filter(x=>!ql||x.name.includes(ql));
+    $('#app').innerHTML=`
+    <div class="wizhead" style="padding:20px 26px 12px">
+      <div><div class="wiztitle">${m.ic} الدخول بدور ${m.t}</div>
+      <div class="wizsub">اختر هويتك من القائمة (${list.length})</div></div>
+    </div>
+    <div class="wizbody" style="max-width:640px">
+      <input class="search" type="text" placeholder="بحث بالاسم…" value="${esc(q)}" oninput="T.setQ(this.value)"/>
+      ${list.map(x=>`
+      <div class="idrow" onclick="T.login('${x.id}')">
+        <div class="av">${initials(x.name)}</div>
+        <div style="flex:1"><b>${esc(x.name)}</b>${x.sub?` <small style="color:var(--p2)">${esc(x.sub)}</small>`:''}<small>${esc(x.extra)}</small></div>
+        <b style="color:var(--p)">دخول ←</b>
+      </div>`).join('')||'<div class="empty-sec" style="padding:20px">لا نتائج</div>'}
+      <button class="btn ghost" style="margin-top:8px" onclick="T.back()">→ رجوع</button>
+    </div>`;
+  }
+}
+
+const T={
+  pickRole(r){ selRole=r; q=''; view='ids'; render(); },
+  setQ(v){ q=v; render(); },
+  back(){ view='roles'; render(); },
+  login(id){
+    const ref={role:selRole,id};
+    setSession(ref);
+    toast(`مرحبًا ${displayName(db,ref)}`);
+    setTimeout(()=>{ location.href=ROLE_META[selRole].href; },350);
+  },
+  logout(){ setSession(null); view='roles'; render(); toast('تم تسجيل الخروج'); }
+};
+render();
+</script>
+</body>
+</html>

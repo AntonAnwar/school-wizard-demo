@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>توزيع الطلاب على الشعب</title>
+<link rel="stylesheet" href="common.css"/>
+<style>
+.pool-row{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;margin-bottom:7px;background:#fff;cursor:pointer;user-select:none}
+.pool-row:hover{border-color:#C7D2FE}
+.pool-row.checked{border-color:var(--p);background:var(--p50)}
+.pool-row input{accent-color:var(--p);width:16px;height:16px;flex:none}
+.pool-row .who{font-weight:800;font-size:13px}
+.pool-row .meta{margin-inline-start:auto;font-size:11px;color:var(--mut);font-weight:700;text-align:left}
+.batchbar{border-top:1.5px solid var(--line);margin-top:12px;padding-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.batchbar b{font-size:13px}
+.secgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(max-width:1000px){.secgrid{grid-template-columns:1fr}}
+.scard2{border:1.5px solid var(--line);border-radius:14px;padding:12px 14px;background:#fff}
+.scard2.full{border-color:#FCA5A5;background:#FFFBFB}
+.scard2 .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.scard2 .letter{width:32px;height:32px;border-radius:9px;background:var(--p50);color:var(--p2);display:grid;place-items:center;font-weight:800;font-size:15px;flex:none}
+.scard2 .tt{flex:1;min-width:100px}
+.scard2 .tt b{font-size:14px}
+.scard2 .tt small{display:block;color:var(--mut);font-size:11.5px;font-weight:700}
+.scard2 .cnt{font-size:12.5px;font-weight:800;color:var(--p2);white-space:nowrap}
+.scard2 .cnt .fulltag{color:var(--bad)}
+.scard2 .cnt .lefttag{color:var(--ok)}
+.scard2 .capbar{margin:9px 0 10px}
+.stud-list{display:flex;flex-direction:column;gap:5px}
+.stud-row{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:9px;background:#F8FAFC;font-size:12.5px}
+.stud-row:hover{background:var(--p50)}
+.stud-row .sn{flex:1;min-width:0}
+.stud-row .sn b{font-size:12.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stud-row .sn small{color:var(--faint);font-size:11px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ibtn{border:1.5px solid var(--line);background:#fff;border-radius:8px;width:27px;height:27px;cursor:pointer;font-size:13px;line-height:1;flex:none;display:grid;place-items:center;color:#4B5563}
+.ibtn:hover{border-color:var(--p);color:var(--p)}
+.ibtn.del:hover{border-color:var(--bad);color:var(--bad)}
+.empty-sec{color:var(--faint);font-size:12px;font-weight:700;text-align:center;padding:14px 8px;border:1.5px dashed var(--line);border-radius:10px}
+.move-opt{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:10px 13px;border:1.5px solid var(--line);border-radius:10px;margin-bottom:8px;background:#fff}
+.move-opt:hover{border-color:var(--p)}
+.lvlhead{font-size:14.5px;font-weight:800;margin:18px 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lvlhead .hint{margin:0}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a class="home" href="setup.html">→ المسار المؤهل</a>
+  <span class="t">🧩 توزيع الطلاب على الشعب</span>
+  <span class="d">الخطوة 8 من 8 — تعيين جماعي · نقل · إزالة · إعادة توزيع</span>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+if(!db.school){
+  $('#app').innerHTML=`
+  <div class="card" style="max-width:620px;margin:50px auto;text-align:center">
+    <div style="font-size:46px">🔒</div>
+    <h2 style="font-size:19px;margin-top:10px">لم تُنشأ المدرسة بعد</h2>
+    <p class="hint" style="margin:10px 0 20px">ابدأ أولًا من «بيانات المدرسة».</p>
+    <a class="btn primary" href="wiz-school.html" style="text-decoration:none">← بدء من بيانات المدرسة</a>
+  </div>`;
+  throw new Error('guard');
+}
+const year=db.school.yearLabel;
+if(!db.students)db.students=[];
+if(!db.parents)db.parents=[];
+if(!(db.sectionsByYear[year]||[]).length){
+  $('#app').innerHTML=`
+  <div class="card" style="max-width:640px;margin:50px auto;text-align:center">
+    <div style="font-size:46px">🏗️</div>
+    <h2 style="font-size:19px;margin-top:10px">لا توجد شعب للعام ${year}</h2>
+    <p class="hint" style="margin:10px 0 20px">التوزيع يتطلب شعبًا — أنشئ الصفوف والشعب أولًا من المعالج الرئيسي.</p>
+    <a class="btn primary" href="index.html" style="text-decoration:none">← إنشاء الصفوف والشعب</a>
+  </div>`;
+  throw new Error('guard');
+}
+
+const checked=new Set();
+let moveId=null;
+let q='',fPath='all';
+
+const unassigned=()=>db.students.filter(s=>!s.sectionKey);
+const enrolled=()=>db.students.filter(s=>s.sectionKey);
+const sections=()=>db.sectionsByYear[year]||[];
+const pName=id=>{if(!id)return '';const p=db.parents.find(p=>p.id===id);return p?p.name:'';};
+const parentShort=id=>{const n=pName(id);return n?n.split(' ').slice(-2).join(' '):'';};
+
+/* ---------- عمليات ---------- */
+function toggleCheck(id){
+  if(checked.has(id))checked.delete(id); else checked.add(id);
+  render();
+}
+function checkAll(filteredList){
+  const all=filteredList.every(id=>checked.has(id));
+  if(all)filteredList.forEach(id=>checked.delete(id));
+  else filteredList.forEach(id=>checked.add(id));
+  render();
+}
+function batchAssign(){
+  const key=selTarget;
+  if(!key){toast('اختر الشعبة الهدف أولًا',{type:'warn'});return;}
+  if(!checked.size){toast('حدّد طالبًا واحدًا على الأقل',{type:'warn'});return;}
+  const sec=sections().find(x=>sectionKey(x)===key);
+  let ok=0,skipLvl=0,skipFull=0;
+  for(const id of [...checked]){
+    const s=db.students.find(x=>x.id===id);
+    if(!s||s.sectionKey)continue;
+    if(s.gradeId!==sec.gradeId){skipLvl++;continue;}
+    if(countInSection(db,sectionKey(sec))>=sec.max){skipFull++;continue;}
+    s.sectionKey=key;ok++;
+  }
+  checked.clear();selTarget='';
+  saveDB(db);render();
+  const parts=[ok?`وُزّع ${ok} طالبًا`:''];
+  if(skipLvl)parts.push(`تخطي ${skipLvl} (مستوى مختلف)`);
+  if(skipFull)parts.push(`تخطي ${skipFull} (امتلاء)`);
+  toast(parts.join(' · ')||'لا تغيير',{type:ok?'ok':'warn'});
+}
+function openMove(id){moveId=id;render();}
+function moveTo(key){
+  const s=db.students.find(x=>x.id===moveId);
+  if(!s)return;
+  const sec=sections().find(x=>sectionKey(x)===key);
+  if(!sec)return;
+  if(s.gradeId!==sec.gradeId){toast('المستوى غير مطابق',{type:'warn'});return;}
+  if(countInSection(db,key)>=sec.max){toast('الشعبة الهدف ممتلئة',{type:'warn'});return;}
+  const from=keyLetter(s.sectionKey);
+  s.sectionKey=key;
+  moveId=null;saveDB(db);render();
+  toast(`نُقل ${s.name} من شعبة ${from} إلى شعبة ${sec.letter}`);
+}
+function unassign(id){
+  const s=db.students.find(x=>x.id===id);
+  if(!s||!s.sectionKey)return;
+  const from=keyLetter(s.sectionKey);
+  s.sectionKey=null;
+  saveDB(db);render();
+  toast(`أُزيل ${s.name} من شعبة ${from} — عاد لقائمة الانتظار`);
+}
+function autoAll(){
+  let placed=0;
+  for(const s of unassigned()){
+    const sec=pickBalancedSection(db,year,s.gradeId);
+    if(sec){s.sectionKey=sectionKey(sec);placed++;}
+  }
+  saveDB(db);render();
+  const left=unassigned().length;
+  toast(placed?`تم توزيع ${placed} طلابًا تلقائيًا${left?` · تبقى ${left} (انظر التنبيهات)`:''}`:'لا طلاب بانتظار التوزيع',{type:placed?'ok':'info',dur:6000});
+}
+
+let selTarget='';
+
+/* ---------- عرض ---------- */
+function capClass(r){return r>=1?'full':r>=0.85?'warn':'';}
+
+function render(){
+  const total=db.students.length,un=unassigned().length,en=total-un;
+  const secs=sections();
+
+  /* قائمة الانتظار (مفلترة) */
+  const pool=unassigned().filter(s=>fPath==='all'||s.pathId===fPath)
+    .filter(s=>!q.trim()||s.name.includes(q.trim()));
+  const poolIds=pool.map(s=>s.id);
+  const allChecked=poolIds.length>0&&poolIds.every(id=>checked.has(id));
+
+  /* الشعب مجمعة حسب المستوى */
+  const byLevel={};
+  secs.forEach(s=>{(byLevel[s.gradeId]=byLevel[s.gradeId]||[]).push(s);});
+  const levelsHtml=Object.entries(byLevel).map(([gid,lvs])=>{
+    const lv=flatLevels(db).find(x=>x.id===gid);
+    const flag=lv?PATHS_META[lv.pathId].flag:'';
+    const totEn=lvs.reduce((a,s)=>a+countInSection(db,sectionKey(s)),0);
+    const totMax=lvs.reduce((a,s)=>a+s.max,0);
+    return `<div class="lvlhead">${flag} ${esc(lv?lv.name:gid)}
+      <span class="hint">${(lv?lv.stage:'')} · ${lvs.length} شعب · ${totEn}/${totMax} طالبًا</span></div>
+      <div class="secgrid">
+      ${lvs.map(s=>{
+        const key=sectionKey(s);const cnt=countInSection(db,key);const full=cnt>=s.max;
+        const t=(db.teachers||[]).find(t=>t.id===s.teacherId);
+        const mem=db.students.filter(x=>x.sectionKey===key);
+        const r=cnt/s.max;
+        return `<div class="scard2 ${full?'full':''}">
+          <div class="top">
+            <span class="letter">${s.letter}</span>
+            <div class="tt"><b>شعبة ${s.letter}</b><small>المربّي: ${t?t.name:'—'}</small></div>
+            <span class="cnt">${cnt}/${s.max} ${full?'<span class="fulltag">· ممتلئة</span>':`<span class="lefttag">· متبقٍ ${s.max-cnt}</span>`}</span>
+          </div>
+          <div class="capbar"><i class="${capClass(r)}" style="width:${Math.min(100,Math.round(r*100))}%"></i></div>
+          <div class="stud-list">
+          ${mem.length?mem.map(x=>`
+            <div class="stud-row">
+              <span class="sn"><b>${x.gender==='f'?'♀':'♂'} ${esc(x.name)}</b>${parentShort(x.parentId)?`<small>وليّ الأمر: ${esc(parentShort(x.parentId))}</small>`:''}</span>
+              <button class="ibtn" title="نقل إلى شعبة أخرى" onclick="openMove('${x.id}')">↔</button>
+              <button class="ibtn del" title="إزالة من الشعبة (يعود لقائمة الانتظار)" onclick="unassign('${x.id}')">✕</button>
+            </div>`).join('')
+          :`<div class="empty-sec">${full?'':'لا طلاب بعد — حدّد طلابًا من القائمة ثم «تعيين المحددين»'}</div>`}
+          </div>
+        </div>`;
+      }).join('')}
+      </div>`;
+  }).join('');
+
+  /* مستويات فيها طلاب بلا شعب */
+  const missing=[...new Set(db.students.map(s=>s.gradeId))].filter(gid=>!(byLevel[gid]&&byLevel[gid].length));
+  const missingHtml=missing.length
+    ?`<div class="warnbox" style="margin-bottom:14px">⚠️ طلاب مسجَّلون في مستويات <b>دون شعب</b> لهذا العام: ${missing.map(g=>esc(levelName(db,g))).join('، ')} — أنشئ شعبها من <a href="index.html" style="color:var(--p);font-weight:800">الصفوف والشعب</a>.</div>`
+    :'';
+
+  /* نافذة النقل */
+  let moveModal='';
+  const mvStudent=moveId?db.students.find(x=>x.id===moveId):null;
+  if(moveId&&(!mvStudent||!mvStudent.sectionKey))moveId=null; /* نافذة على طالب لم يعد موزّعًا */
+  if(moveId&&mvStudent){
+    const s=mvStudent;
+      const targets=secs.filter(x=>x.gradeId===s.gradeId&&sectionKey(x)!==s.sectionKey&&countInSection(db,sectionKey(x))<x.max);
+      moveModal=`<div class="overlay" onclick="if(event.target===this)moveId=null,render()">
+        <div class="modal" style="max-width:480px">
+          <h3>نقل: ${esc(s.name)}</h3>
+          <p>من شعبة <b>${keyLetter(s.sectionKey)}</b> إلى شعبة أخرى من مستواه (${esc(levelName(db,s.gradeId))})</p>
+          ${targets.length?targets.map(x=>{
+            const k=sectionKey(x);
+            return `<div class="move-opt">
+              <span><b>شعبة ${x.letter}</b> <span style="color:var(--mut);font-size:12px;font-weight:700">— متبقٍ ${x.max-countInSection(db,k)}</span></span>
+              <button class="btn tiny primary" onclick="moveTo('${k}')">نقل إلى هنا</button>
+            </div>`;
+          }).join(''):'<div class="warnbox" style="margin:0">لا شعب متاحة بمستواه (ممتلئة أو غير موجودة).</div>'}
+          <div class="row" style="margin-top:14px"><button class="btn ghost" onclick="moveId=null;render()">إلغاء</button></div>
+        </div></div>`;
+  }
+
+  $('#app').innerHTML=`${appbar(db.school.name,'/ الإعداد / التوزيع على الشعب')}
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">توزيع طلاب ${year} على الشعب</div>
+        <div class="wizsub">${en}/${total} موزّع · ${un} بانتظار التوزيع</div>
+      </div>
+      <button class="btn primary" onclick="autoAll()">⚡ توزيع تلقائي (${un})</button>
+    </div>
+    <div class="wizbody">
+      ${missingHtml}
+      <div style="display:grid;grid-template-columns:340px 1fr;gap:14px">
+        <aside class="card" style="align-self:start">
+          <div class="card-h">بانتظار التوزيع (${unassigned().length})
+            <a class="btn tiny ${allChecked?'ghost':'outline-p'}" style="margin-inline-start:auto;cursor:pointer" onclick="checkAll(${JSON.stringify(poolIds)})">${allChecked?'إلغاء التحديد':'تحديد الكل'}</a>
+          </div>
+          <input class="search" type="text" placeholder="بحث بالاسم…" value="${esc(q)}" oninput="q=this.value;renderPoolOnly();"/>
+          <div class="chips" style="margin-bottom:12px">
+            <span class="chip sm ${fPath==='all'?'sel':''}" onclick="fPath='all';render()">الكل</span>
+            ${db.school.paths.map(p=>`<span class="chip sm ${fPath===p?'sel':''}" onclick="fPath='${p}';render()">${PATHS_META[p].flag}</span>`).join('')}
+          </div>
+          <div id="pool-list">
+          ${pool.length?pool.map(s=>`
+            <div class="pool-row ${checked.has(s.id)?'checked':''}" onclick="toggleCheck('${s.id}')">
+              <input type="checkbox" ${checked.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleCheck('${s.id}')"/>
+              <span class="who">${s.gender==='f'?'♀':'♂'} ${esc(s.name)}</span>
+              <span class="meta">${esc(levelName(db,s.gradeId))}${s.parentId?' · '+esc(parentShort(s.parentId)):''}</span>
+            </div>`).join('')
+          :'<div class="empty-sec">لا طلاب بانتظار التوزيع 🎉</div>'}
+          </div>
+          <div class="batchbar">
+            <b>المحدد: ${checked.size}</b>
+            <select class="inline" style="flex:1;min-width:140px" onchange="selTarget=this.value;render()">
+              <option value="">— اختر الشعبة —</option>
+              ${secs.map(x=>{
+                const k=sectionKey(x);const c=countInSection(db,k);
+                return `<option value="${k}" ${selTarget===k?'selected':''}>${esc(levelName(db,x.gradeId))} / شعبة ${x.letter} (متبقٍ ${x.max-c})</option>`;
+              }).join('')}
+            </select>
+            <button class="btn primary" onclick="batchAssign()">تعيين المحددين</button>
+          </div>
+        </aside>
+        <div>
+          ${levelsHtml||'<div class="warnbox">لا شعب.</div>'}
+        </div>
+      </div>
+    </div>
+    <div class="wizfoot">
+      <a class="btn ghost" href="wiz-students.html" style="text-decoration:none">→ الطلاب</a>
+      <div class="footnote">${un?'حدّد مجموعة ← اختر شعبة ← «تعيين المحددين» · أو «⚡ توزيع تلقائي»':'اكتمل التوزيع — النظام جاهز ✓'}</div>
+      <a class="btn primary" href="setup.html" style="text-decoration:none">إنهاء: لوحة المسار المؤهل ←</a>
+    </div>
+    ${moveModal}`;
+}
+function renderPoolOnly(){
+  const el=$('#pool-list');if(!el)return;
+  const pool=unassigned().filter(s=>fPath==='all'||s.pathId===fPath)
+    .filter(s=>!q.trim()||s.name.includes(q.trim()));
+  el.innerHTML=pool.length?pool.map(s=>`
+    <div class="pool-row ${checked.has(s.id)?'checked':''}" onclick="toggleCheck('${s.id}')">
+      <input type="checkbox" ${checked.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleCheck('${s.id}')"/>
+      <span class="who">${s.gender==='f'?'♀':'♂'} ${esc(s.name)}</span>
+      <span class="meta">${esc(levelName(db,s.gradeId))}${s.parentId?' · '+esc(parentShort(s.parentId)):''}</span>
+    </div>`).join('')
+    :'<div class="empty-sec">لا نتائج</div>';
+}
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>إدارة السلوك — قوائم السلوكيات والنقاط ومستويات التنبيه</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<div class="topbar">
+  <a class="home" href="setup.html">→ المسار المؤهل</a>
+  <span class="t">⚖️ إدارة السلوك</span>
+  <span class="d">الخطوة 10 من 10 — السلوكيات الإيجابية/السلبية، نقاطها، مستويات التنبيه والمكافآت، وحالات المتابعة</span>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+let analyzeStudent=null;
+
+function guard(){
+  if(!db.school){
+    $('#app').innerHTML=`<div class="card" style="max-width:620px;margin:50px auto;text-align:center">
+      <div style="font-size:46px">🔒</div><h2 style="font-size:19px;margin-top:10px">ابدأ من بيانات المدرسة</h2>
+      <p class="hint" style="margin:10px 0 20px">إدارة السلوك تُهيأ بعد إعداد المدرسة.</p>
+      <a class="btn primary" href="wiz-school.html" style="text-decoration:none">← بدء من بيانات المدرسة</a></div>`;
+    throw new Error('guard');
+  }
+  ensureBehaviorData(db);
+}
+const studOpts=()=> (db.students||[]).map(s=>{
+  const sec=sectionByKey(db,s.sectionKey);
+  return {id:s.id,name:s.name,d:sec?levelName(db,sec.gradeId)+' / شعبة '+sec.letter:'غير موزَّع'};
+});
+
+function behaviorCard(kind,title,icon,cats){
+  const list=db.behaviors[kind];
+  return `
+  <div class="card">
+    <div class="card-h" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <b>${icon} ${title} (${list.length})</b>
+      <span class="stchip ${kind==='negative'?'bad':'ok'}" style="margin-inline-start:auto">${kind==='negative'?'محصوبة من نقاط الطالب':'تُضاف إلى نقاط الطالب'}</span>
+    </div>
+    ${list.map((b,i)=>`
+    <div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+      <input class="din" style="flex:2;min-width:180px" value="${esc(b.name)}" onchange="T.behName('${kind}','${b.id}',this.value)"/>
+      <div style="display:flex;align-items:center;gap:4px">
+        <span style="font-weight:800;font-size:13px;color:${kind==='negative'?'#DC2626':'#059669'}">${kind==='negative'?'−':'+'}</span>
+        <input class="din" type="number" min="1" max="10" style="width:64px" value="${b.points}" onchange="T.behPoints('${kind}','${b.id}',this.value)"/>
+      </div>
+      <select class="inline" onchange="T.behCat('${kind}','${b.id}',this.value)">
+        ${cats.map(c=>`<option ${b.category===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <button class="btn tiny ghost" onclick="T.rmBehavior('${kind}','${b.id}')" title="حذف">✕</button>
+    </div>`).join('')}
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+      <input class="din" id="newb_${kind}" style="flex:1;min-width:180px" placeholder="اسم سلوك جديد…"/>
+      <input class="din" id="newp_${kind}" type="number" min="1" max="10" style="width:64px" value="${kind==='negative'?1:1}"/>
+      <select class="inline" id="newc_${kind}">${cats.map(c=>`<option>${c}</option>`).join('')}</select>
+      <button class="btn primary tiny" onclick="T.addBehavior('${kind}')">＋ إضافة</button>
+    </div>
+  </div>`;
+}
+
+function stageRows(){
+  const s=db.behaviorSettings;
+  const names=['الأولى','الثانية','الثالثة'];
+  return `
+  <div class="card">
+    <div class="card-h">⚠️ سلّم النقاط السلبية — ثلاث مراحل (الحدود تراكمية وقابلة للتعديل)</div>
+    ${s.negStages.map((st,i)=>`
+    <div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+      <span class="stchip ${STAGE_META[i+1].cls}" style="min-width:100px;text-align:center">المرحلة ${names[i]}: ${STAGE_META[i+1].t}</span>
+      <b>عند وصول الطالب إلى</b>
+      <input class="din" type="number" min="1" style="width:70px" value="${st.threshold}" onchange="T.stageThr(${i},this.value)"/>
+      <span>نقطة سلبية</span>
+      <input class="din" style="flex:1;min-width:220px" value="${esc(st.action)}" onchange="T.stageAction(${i},this.value)" title="الإجراء التربوي المرافق"/>
+    </div>`).join('')}
+    <p class="hint" style="margin-top:8px">عند تخطي كل حد: يُنشأ <b>حالة متابعة</b> تلقائيًا + إشعار ولي الأمر (والإدارة/المرشد في المرحلتين 2 و3) — وتظهر الحالات المفتوحة أدناه لمتابعتها.</p>
+  </div>`;
+}
+
+function levelRows(){
+  const s=db.behaviorSettings;
+  return `
+  <div class="card">
+    <div class="card-h">🏆 مستويات النقاط الإيجابية — مكافآت (قابلة للتعديل)</div>
+    ${s.posLevels.map((lv,i)=>`
+    <div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+      <span class="stchip ok" style="min-width:110px;text-align:center">المستوى ${i+1}</span>
+      <b>عند ${lv.threshold} نقطة إيجابية:</b>
+      <input class="din" type="number" min="1" style="width:70px" value="${lv.threshold}" onchange="T.levelThr(${i},this.value)"/>
+      <input class="din" style="flex:1;min-width:200px" value="${esc(lv.name)}" onchange="T.levelName(${i},this.value)" title="اسم المستوى"/>
+      <input class="din" style="flex:1;min-width:200px" value="${esc(lv.reward)}" onchange="T.levelReward(${i},this.value)" title="المكافأة"/>
+    </div>`).join('')}
+  </div>`;
+}
+
+function incidentsSection(){
+  const incs=openIncidents(db);
+  return `
+  <div class="card">
+    <div class="card-h">📋 حالات المتابعة السلوكية المفتوحة (${incs.length})</div>
+    ${incs.length?incs.map(inc=>{
+      const st=studentById(db,inc.studentId); if(!st)return '';
+      const sec=sectionByKey(db,st.sectionKey);
+      const t=teacherById(db,inc.closedBy);
+      return `
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+        <span class="stchip ${STAGE_META[inc.stage].cls}" style="min-width:105px;text-align:center">${STAGE_META[inc.stage].t}</span>
+        <div style="flex:1;min-width:220px">
+          <b>${esc(st.name)}</b> <span class="hint">(${sec?levelName(db,sec.gradeId)+' / شعبة '+sec.letter:'غير موزَّع'}) · ${inc.at}</span>
+          <div class="hint" style="margin-top:3px">الحَد: ${inc.threshold} نقطة · الإجراء: ${esc(inc.action)}</div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:7px;flex-wrap:wrap">
+            <input class="din" style="flex:1;min-width:200px" placeholder="المتابعة اللاحقة (ما الذي فُعّل؟)" value="${esc(inc.followUp)}" onchange="T.incFollowUp('${inc.id}',this.value)"/>
+            <button class="btn tiny outline-p" onclick="T.closeInc('${inc.id}')">✓ إغلاق الحالة</button>
+          </div>
+        </div>
+      </div>`;
+    }).join(''):'<div class="hint" style="padding:10px 0">لا حالات مفتوحة — كل الحالات مغلقة ومتابَعة 🎉</div>'}
+  </div>`;
+}
+
+function analysisSection(){
+  const opts=studOpts();
+  if(!analyzeStudent||!(db.students||[]).some(s=>s.id===analyzeStudent))analyzeStudent=opts[0]?opts[0].id:null;
+  const st=studentById(db,analyzeStudent);
+  const info=studentBehavior(db,analyzeStudent);
+  const recs=(db.behaviorRecords||[]).filter(r=>r.studentId===analyzeStudent).sort((a,b)=>b.at.localeCompare(a.at));
+  return `
+  <div class="card">
+    <div class="card-h" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <b>📊 تحليل النقاط حسب تصنيف السلوك</b>
+      <select class="inline" style="margin-inline-start:auto" onchange="T.setAnalyze(this.value)">
+        ${opts.map(o=>`<option value="${o.id}" ${o.id===analyzeStudent?'selected':''}>${esc(o.name)} — ${o.d}</option>`).join('')}
+      </select>
+    </div>
+    ${st?`
+    <div class="pbar2" style="justify-content:center">
+      <span class="stchip bad" style="font-size:13px">سلبي: ${info.neg}</span>
+      <span class="stchip ${STAGE_META[info.stage]?STAGE_META[info.stage].cls:'ok'}" style="font-size:13px">${info.stage?('المرحلة: '+info.stageName):'لا مرحلة (سليم)'}</span>
+      <span class="stchip ok" style="font-size:13px">إيجابي: +${info.pos}</span>
+      <span class="stchip ${info.level?'info':'gray'}" style="font-size:13px">${info.level?('المستوى: '+info.levelName):'لا مستوى بعد'}</span>
+      <span class="stchip gray" style="font-size:13px">${info.records} سجل</span>
+    </div>
+    <table class="tbl" style="margin-top:8px">
+      <tr><th>تصنيف السلوك</th><th>سجلات</th><th>نقاط سلبية</th><th>نقاط إيجابية</th></tr>
+      ${info.byCategory.map(c=>`<tr><td>${esc(c.category)}</td><td>${c.count}</td>
+        <td style="color:${c.neg<0?'#DC2626':'var(--faint)'};font-weight:800">${c.neg<0?c.neg:'—'}</td>
+        <td style="color:${c.pos>0?'#059669':'var(--faint)'};font-weight:800">${c.pos>0?'+'+c.pos:'—'}</td></tr>`).join('')
+        ||'<tr><td colspan="4" style="color:var(--faint)">لا سجلات</td></tr>'}
+    </table>
+    <div class="card-h" style="margin-top:14px">السجل الكامل (${recs.length})</div>
+    ${recs.map(r=>{
+      const t=teacherById(db,r.teacherId);
+      return `
+      <div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+        <span class="stchip ${r.kind==='negative'?'bad':'ok'}" style="min-width:60px;text-align:center">${r.kind==='negative'?'-'+r.points:'+'+r.points}</span>
+        <div style="flex:1;min-width:240px">
+          <b style="font-size:13.5px">${esc(r.behaviorName)}</b>
+          <span class="stchip gray" style="margin-inline-start:6px">${esc(r.category)}</span>
+          <div class="hint" style="margin-top:3px">${t?esc(t.name):'—'} · ${r.at}${r.note?' · ملاحظة: '+esc(r.note):''}${r.action?' · إجراء: '+esc(r.action):''} ${r.notifiedParent?'· 📨 تم إشعار ولي الأمر':''}</div>
+          <input class="din" style="width:100%;margin-top:6px" placeholder="المتابعة اللاحقة…" value="${esc(r.followUp)}" onchange="T.recFollowUp('${r.id}',this.value)"/>
+        </div>
+      </div>`;
+    }).join('')||'<div class="hint">لا سجلات لهذا الطالب.</div>'}
+    `:'<div class="hint">لا طلاب.</div>'}
+  </div>`;
+}
+
+function render(){
+  guard();
+  ensureBehaviorData(db);
+  const negCount=(db.behaviorRecords||[]).filter(r=>r.kind==='negative').length;
+  const posCount=(db.behaviorRecords||[]).filter(r=>r.kind==='positive').length;
+  const incs=openIncidents(db).length;
+  $('#app').innerHTML=`${appbar(db.school.name,'/ الإعداد / إدارة السلوك')}
+  <div class="wizhead">
+    <div>
+      <div class="wiztitle">⚖️ نظام إدارة السلوك</div>
+      <div class="wizsub">قوائم السلوكيات ونقاطها (قابلة للتعديل) + سلّم التنبيه السلبي (3 مراحل) + مستويات المكافأة الإيجابية (3 مستويات) + حالات المتابعة + تحليل النقاط حسب التصنيف. السجل يملكه المعلمون من بوابة «السلوك».</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="stchip bad">${negCount} حالة سلبية</span>
+      <span class="stchip ok">${posCount} حالة إيجابية</span>
+      <span class="stchip ${incs?'warn':'ok'}">${incs?'حالات مفتوحة: '+incs:'لا حالات مفتوحة'}</span>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    ${behaviorCard('negative','السلوكيات السلبية','🔻',BEHAVIOR_CATS_NEG)}
+    ${behaviorCard('positive','السلوكيات الإيجابية','🌟',BEHAVIOR_CATS_POS)}
+  </div>
+  ${stageRows()}
+  ${levelRows()}
+  ${incidentsSection()}
+  ${analysisSection()}
+  <div class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+    <div style="flex:1;min-width:260px">
+      <b>من يستخدم هذا النظام؟</b>
+      <p class="hint" style="margin-top:4px">المعلم يسجل من بوابة «السلوك» (طالب ← سلوك ← ملاحظة ← حفظ مع إشعار ولي الأمر اختياريًا) — وتُشعَر الأطراف تلقائيًا عند تخطي أي حد. هذه الشاشة هي واجهة <b>الإدارة والمرشد التربوي</b>: تعديل القوائم والحدود، متابعة الحالات المفتوحة، وإغلاقها بالمتابعة.</p>
+    </div>
+    <a class="btn primary" href="portal.html" style="text-decoration:none">🚪 جرّب البوابة بدور معلم</a>
+  </div>`;
+}
+
+const T={
+  behName(kind,id,v){ const b=behaviorItem(db,kind,id); if(b&&v.trim()){b.name=v.trim();saveDB(db);render();} },
+  behPoints(kind,id,v){ const b=behaviorItem(db,kind,id); if(b){b.points=Math.max(1,Math.min(10,parseInt(v)||1));saveDB(db);render();} },
+  behCat(kind,id,v){ const b=behaviorItem(db,kind,id); if(b&&v){b.category=v;saveDB(db);render();} },
+  addBehavior(kind){
+    const n=(document.getElementById('newb_'+kind)||{}).value||'';
+    const p=parseInt((document.getElementById('newp_'+kind)||{}).value)||1;
+    const c=(document.getElementById('newc_'+kind)||{}).value||'أخرى';
+    if(!n.trim()){toast('اكتب اسم السلوك',{type:'warn'});return;}
+    if((db.behaviors[kind]||[]).some(b=>b.name===n.trim())){toast('موجود مسبقًا',{type:'warn'});return;}
+    db.behaviors[kind].push({id:uid(kind==='negative'?'bn':'bp'),name:n.trim(),points:Math.max(1,Math.min(10,p)),category:c});
+    saveDB(db);render();toast('أُضيف السلوك: '+n.trim(),{type:'ok'});
+  },
+  rmBehavior(kind,id){
+    askConfirm('حذف السلوك','سيُحذف من القائمة (السجلات السابقة لا تتأثر).',()=>{
+      db.behaviors[kind]=db.behaviors[kind].filter(b=>b.id!==id);saveDB(db);render();
+    },'حذف',true);
+  },
+  stageThr(i,v){ db.behaviorSettings.negStages[i].threshold=Math.max(1,parseInt(v)||1);saveDB(db);render();toast('حُدّث حد المرحلة',{type:'ok'}); },
+  stageAction(i,v){ db.behaviorSettings.negStages[i].action=v;saveDB(db); },
+  levelThr(i,v){ db.behaviorSettings.posLevels[i].threshold=Math.max(1,parseInt(v)||1);saveDB(db);render();toast('حُدّث حد المستوى',{type:'ok'}); },
+  levelName(i,v){ db.behaviorSettings.posLevels[i].name=v;saveDB(db);render(); },
+  levelReward(i,v){ db.behaviorSettings.posLevels[i].reward=v;saveDB(db); },
+  incFollowUp(id,v){ const inc=(db.behaviorIncidents||[]).find(x=>x.id===id); if(inc){inc.followUp=v;saveDB(db);} },
+  closeInc(id){
+    const inc=(db.behaviorIncidents||[]).find(x=>x.id===id); if(!inc)return;
+    askConfirm('إغلاق حالة المتابعة','سُتُغلق الحالة مع المتابعة المسجلة.',()=>{
+      closeIncident(db,id,null);render();toast('أُغلقت الحالة',{type:'ok'});
+    },'إغلاق',true);
+  },
+  setAnalyze(id){ analyzeStudent=id;render(); },
+  recFollowUp(id,v){ setRecordFollowUp(db,id,v); }
+};
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>إنشاء الصفوف والشعب — نموذج تفاعلي شغّال</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+@font-face{font-family:"Cairo";src:url("fonts/cairo-arabic-wght-normal.woff2") format("woff2");font-style:normal;font-weight:200 1000;font-display:swap}
+:root{
+--p:#00BCD4;--p2:#006064;--p50:#E6F9FB;
+--ink:#12202A;--mut:#5A6B78;--faint:#7B8C96;
+--line:#D8E3E7;--bg:#F3FBFD;
+--ok:#00A86B;--okbg:#E8FBF3;--okline:#A8E9D1;
+--warn:#B7791F;--warnbg:#FFFAEB;--warnline:#F6D365;
+--bad:#E53935;
+}
+body{font-family:"Cairo","Segoe UI",Tahoma,"Noto Naskh Arabic","Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.7}
+button,input,select{font-family:inherit}
+.page{max-width:1140px;margin:0 auto;padding:26px 22px 80px}
+
+/* topbar */
+.topbar{position:sticky;top:0;z-index:50;background:linear-gradient(135deg,#004D56,#00BCD4);color:#fff;display:flex;align-items:center;gap:14px;padding:11px 20px;flex-wrap:wrap;box-shadow:0 4px 18px rgba(0,77,86,.20)}
+.topbar .t{font-weight:800;font-size:14px}
+.topbar .d{font-size:12px;opacity:.75}
+.topbar .reset{margin-inline-start:auto;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.topbar .reset:hover{background:rgba(255,255,255,.22)}
+
+/* app chrome */
+.appbar{display:flex;justify-content:space-between;align-items:center;height:58px;padding:0 22px;border-bottom:1px solid var(--line);background:#fff;box-shadow:0 2px 10px rgba(0,77,86,.05)}
+.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:15px}
+.brand .logo{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,var(--p),var(--p2));color:#fff;display:grid;place-items:center;font-size:15px;box-shadow:0 4px 10px rgba(0,188,212,.28)}
+.crumb{color:var(--faint);font-size:12.5px;font-weight:600;margin-inline-start:6px}
+.appbar-l{display:flex;align-items:center;gap:12px;color:#6B7280;font-size:15px}
+.uav{width:32px;height:32px;border-radius:50%;background:#DDF8FB;color:var(--p2);display:grid;place-items:center;font-weight:800;font-size:13px}
+
+/* wizard shell */
+.wizhead{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:18px 28px 10px;background:#fff;flex-wrap:wrap}
+.wiztitle{font-size:19px;font-weight:800;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.wizsub{font-size:12.5px;color:var(--mut);font-weight:600}
+.restart{font-size:12px;font-weight:700;color:var(--faint);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:#fff}
+.restart:hover{color:var(--bad);border-color:var(--bad)}
+.wsteps{display:flex;align-items:center;flex-wrap:wrap}
+.wstep{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--faint);white-space:nowrap;cursor:default}
+.wstep.back{cursor:pointer}
+.wstep.back:hover{color:var(--p)}
+.wstep .d{width:26px;height:26px;border-radius:50%;background:#E5E7EB;color:#6B7280;display:grid;place-items:center;font-size:12px;font-weight:800}
+.wstep.on{color:var(--p)} .wstep.on .d{background:var(--p);color:#fff}
+.wstep.done{color:var(--ok)} .wstep.done .d{background:var(--ok);color:#fff}
+.wline{width:30px;height:2px;background:var(--line);margin:0 8px}
+.wizbody{background:#F8FAFC;padding:16px 28px 24px}
+.wizfoot{display:flex;justify-content:space-between;align-items:center;padding:14px 28px;background:#fff;border-top:1px solid var(--line);gap:12px;flex-wrap:wrap}
+.footnote{font-size:12.5px;color:var(--mut);font-weight:700}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 5px 18px rgba(0,77,86,.045)}
+.card-h{font-size:14.5px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hint{font-size:12.5px;color:var(--mut);margin-top:10px}
+
+/* primitives */
+.chips{display:flex;flex-wrap:wrap;gap:9px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px solid var(--line);border-radius:999px;background:#fff;font-size:13px;font-weight:700;color:#374151;cursor:pointer;user-select:none}
+.chip:hover:not(.off):not(.sel){border-color:var(--p);color:var(--p2)}
+.chip.sel{background:var(--p);border-color:var(--p);color:#fff}
+.chip.off{opacity:.4;cursor:not-allowed}
+.chip.sec{border-color:var(--p);background:var(--p50);color:var(--p2)}
+.chip.add{border-style:dashed;color:var(--p);background:var(--p50)}
+.chip.sm{padding:4px 11px;font-size:12px}
+.chip .x{opacity:.75;font-weight:800;padding-inline-start:4px}
+.chip .x:hover{opacity:1;color:var(--bad)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;border:1.5px solid transparent;font-size:14px;font-weight:800;cursor:pointer;background:#fff}
+.btn.primary{background:linear-gradient(135deg,var(--p),var(--p2));color:#fff;box-shadow:0 4px 12px rgba(0,188,212,.22)}
+.btn.primary:hover:not(:disabled){filter:brightness(1.06);transform:translateY(-1px)}
+.btn.ghost{border-color:var(--line);color:#374151}
+.btn.ghost:hover{border-color:#9CA3AF}
+.btn.tiny{padding:6px 13px;font-size:12.5px;border-radius:8px}
+.btn.outline-p{border-color:var(--p);color:var(--p2);background:var(--p50)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.num{display:inline-flex;align-items:center;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.num button{width:34px;height:34px;border:0;background:#F9FAFB;font-size:17px;cursor:pointer;color:#374151;line-height:1}
+.num button:hover{background:var(--p50);color:var(--p)}
+.num b{min-width:50px;text-align:center;font-size:15px}
+.tip{background:var(--p50);border:1.5px dashed var(--p);color:var(--p2);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:600}
+.warnbox{background:var(--warnbg);border:1.5px solid var(--warnline);color:#92400E;border-radius:12px;padding:10px 14px;font-size:13px;font-weight:700}
+.maxin{width:58px;border:1.5px solid var(--line);border-radius:8px;padding:4px 8px;font-size:13px;font-weight:800;text-align:center;color:#374151}
+.maxin:focus{outline:none;border-color:var(--p);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.mlabel{display:block;font-size:12.5px;font-weight:800;color:var(--mut);margin:10px 0 4px}
+select.inline{border:1.5px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;font-weight:700;background:#fff;color:#374151}
+input.search{border:1.5px solid var(--line);border-radius:10px;padding:8px 14px;font-size:13px;width:100%;margin-bottom:12px}
+input.search:focus{outline:none;border-color:var(--p);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+
+/* frame 2 bits */
+.srcs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:900px){.srcs{grid-template-columns:1fr}}
+.src{border:1.5px solid var(--line);border-radius:12px;padding:14px;position:relative;background:#fff;cursor:pointer;user-select:none}
+.src:hover{border-color:var(--p)}
+.src.sel{border-color:var(--p);background:var(--p50);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.src b{font-size:14px}
+.src p{font-size:12px;color:var(--mut);margin-top:4px}
+.rec{position:absolute;top:-10px;left:12px;background:var(--ok);color:#fff;font-size:10.5px;font-weight:800;border-radius:999px;padding:2px 10px}
+.banner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--okbg);border:1px solid var(--okline);border-radius:12px;padding:11px 16px;font-size:13.5px;color:#065F46;margin-bottom:14px}
+.gsec{display:grid;grid-template-columns:180px 1fr auto;gap:14px;align-items:center;padding:12px 0;border-bottom:1px dashed var(--line)}
+@media(max-width:800px){.gsec{grid-template-columns:1fr}}
+.gsec .gname{font-weight:800;font-size:14px}
+.gsec .gname small{display:block;font-weight:600;color:var(--faint);font-size:11.5px}
+.gmax{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);font-weight:700}
+.globalmax{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:#111827;color:#fff;border-radius:14px;padding:13px 18px;font-size:14px;font-weight:800}
+
+/* frame 3 bits */
+.tlayout{display:grid;grid-template-columns:330px 1fr;gap:14px}
+@media(max-width:900px){.tlayout{grid-template-columns:1fr}}
+.tcard{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;cursor:pointer;background:#fff;user-select:none}
+.tcard:hover{border-color:var(--p);background:var(--p50)}
+.tav{width:36px;height:36px;border-radius:50%;background:var(--p50);color:var(--p2);display:grid;place-items:center;font-weight:800;font-size:12.5px;flex:none}
+.tcard small{color:var(--mut);font-size:11.5px;display:block;font-weight:600}
+.warnload{color:var(--warn);font-weight:800;font-size:11px}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border:1.5px solid var(--line);border-radius:10px;margin-bottom:8px;font-size:13.5px;font-weight:800;background:#fff;cursor:pointer;user-select:none}
+.srow:hover{border-color:#8BDDE5}
+.srow.sel{border-color:var(--p);background:var(--p50);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.tchip{background:var(--okbg);color:#065F46;border:1px solid var(--okline);border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:700}
+.tchip .x{cursor:pointer;font-weight:800;margin-inline-start:4px;opacity:.7}
+.tchip .x:hover{opacity:1;color:var(--bad)}
+.pendingtag{background:#F9FAFB;color:var(--faint);border:1.5px dashed var(--line);padding:4px 12px;border-radius:999px;font-size:12.5px;font-weight:700}
+.smore{color:var(--faint);font-size:12.5px;font-weight:700;text-align:right;padding:4px 0 8px}
+.shead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.progresspill{margin-inline-start:auto;background:var(--p50);color:var(--p2);font-size:12px;font-weight:800;border-radius:999px;padding:4px 12px}
+.pbar{height:6px;background:#E5E7EB;border-radius:99px;overflow:hidden;flex:1;min-width:120px}
+.pbar i{display:block;height:100%;background:var(--ok);border-radius:99px;transition:width .25s}
+.bulk{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px dashed var(--line);margin-top:10px;padding-top:12px;font-size:13px;font-weight:700;color:#374151}
+.hintbar{background:var(--p50);border:1.5px solid var(--p);color:var(--p2);border-radius:10px;padding:8px 14px;font-size:13px;font-weight:800;margin-bottom:10px}
+
+/* frame 4 */
+.valid{background:#fff;border:1px solid var(--line);border-radius:14px;padding:4px 18px;margin-bottom:14px}
+.v{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed #EEF1F5;font-size:13.5px;font-weight:600}
+.v:last-child{border-bottom:0}
+.v.ok{color:#065F46}.v.warn{color:#92400E}
+.v a{color:var(--p);font-weight:800;font-size:12.5px;cursor:pointer}
+
+/* tables & dashboard */
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th{text-align:right;background:#F9FAFB;color:var(--mut);font-size:12px;font-weight:800;padding:9px 12px;border-bottom:1.5px solid var(--line)}
+.tbl td{padding:10px 12px;border-bottom:1px solid #F1F3F7;font-weight:600}
+.tbl a.edit{color:var(--p);font-weight:800;font-size:12.5px;cursor:pointer}
+.dashhead{display:flex;justify-content:space-between;align-items:center;padding:22px 26px 8px;gap:14px;flex-wrap:wrap}
+.dashhead h2{font-size:20px}
+.dashhead .sub{font-size:12.5px;color:var(--mut);font-weight:600}
+.stats{display:flex;gap:10px;padding:4px 26px;flex-wrap:wrap}
+.stat{background:#F8FAFC;border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:12.5px;font-weight:700;color:#374151}
+.stat b{color:var(--p2);font-size:14px}
+.dash-body{padding:12px 26px 26px}
+.dash-body .tblwrap{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:auto}
+.ytabs{display:flex;gap:9px;padding:8px 26px 0;flex-wrap:wrap}
+.empty{border:2px dashed #CBD5E1;border-radius:16px;padding:42px 20px;text-align:center;margin-top:14px;background:#FAFBFD}
+.empty .ic{font-size:40px}
+.empty b{display:block;font-size:16px;margin-top:10px}
+.empty p{color:var(--mut);font-size:13.5px;max-width:540px;margin:6px auto 16px}
+.newbadge{background:var(--okbg);color:#065F46;border:1px solid var(--okline);font-size:10.5px;font-weight:800;border-radius:999px;padding:1px 9px;margin-inline-start:8px}
+tr.new td{background:#F6FEFA}
+
+/* toasts & modal */
+#toast-root{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100;display:flex;flex-direction:column;gap:10px;align-items:center;width:max-content;max-width:94vw}
+.toastx{background:#111827;color:#fff;border-radius:12px;padding:12px 18px;font-size:14px;font-weight:700;display:flex;gap:12px;align-items:center;box-shadow:0 12px 34px rgba(0,0,0,.28);animation:pop .18s ease;flex-wrap:wrap;justify-content:center}
+.toastx.ok{background:#065F46}
+.toastx.warn{background:#92400E}
+.toastx button{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:8px;padding:6px 14px;font-weight:800;cursor:pointer;font-size:13px}
+.toastx button:hover{background:rgba(255,255,255,.28)}
+@keyframes pop{from{opacity:0;transform:translateY(-8px)}to{opacity:1}}
+.overlay{position:fixed;inset:0;background:rgba(17,24,39,.45);z-index:90;display:grid;place-items:center;padding:20px}
+.modal{background:#fff;border-radius:16px;padding:24px;max-width:460px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:pop .15s ease}
+.modal h3{font-size:17px;margin-bottom:8px}
+.modal p{font-size:14px;color:var(--mut);margin-bottom:18px}
+.modal .row{display:flex;gap:10px;justify-content:flex-end}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="t">🎓 الصفوف والشعب — نموذج تفاعلي شغّال</span>
+  <span class="d">المعالج يعمل فعليًا · البيانات تُحفظ في متصفحك (localStorage) · جرّب «نسخ من العام الماضي»</span>
+  <button class="reset" onclick="App.resetDemo()">↺ إعادة تعيين بيانات النموذج</button>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   البيانات الثابتة
+============================================================ */
+const LETTERS=['أ','ب','ج','د','هـ','و','ز','ح','ط','ي','ك','ل','م','ن','س'];
+const AR=['','١','٢','٣','٤'];
+const STAGES={
+  kindergarten:{name:'روضة',tpl:{sections:2,max:25}},
+  primary:{name:'أساسية',tpl:{sections:3,max:35}},
+  secPrep:{name:'ثانوية أولى',tpl:{sections:2,max:35}},
+  sec:{name:'ثانوية عليا',tpl:{sections:2,max:32}}
+};
+const DEMO_GRADES=[
+  {id:'k1',name:'الروضة ١',stage:'kindergarten'},
+  {id:'k2',name:'الروضة ٢',stage:'kindergarten'},
+  {id:'p1',name:'الأول الأساسي',stage:'primary'},
+  {id:'p2',name:'الثاني الأساسي',stage:'primary'},
+  {id:'p3',name:'الثالث الأساسي',stage:'primary'},
+  {id:'p4',name:'الرابع الأساسي',stage:'primary'},
+  {id:'p5',name:'الخامس الأساسي',stage:'primary'},
+  {id:'p6',name:'السادس الأساسي',stage:'primary'},
+  {id:'s1',name:'السابع',stage:'secPrep'},
+  {id:'s2',name:'الثامن',stage:'secPrep'},
+  {id:'s3',name:'التاسع',stage:'sec'},
+  {id:'s4',name:'العاشر',stage:'sec'},
+  {id:'s5',name:'الحادي عشر',stage:'sec'},
+  {id:'s6',name:'الثاني عشر',stage:'sec'}
+].map(g=>({...g,stageName:STAGES[g.stage].name}));
+const DEMO_TEACHERS=[
+  {id:'t1',name:'أحمد سمير',subject:'رياضيات'},
+  {id:'t2',name:'سارة محمد',subject:'لغة إنجليزية'},
+  {id:'t3',name:'ليلى خالد',subject:'لغة عربية'},
+  {id:'t4',name:'عمر حسن',subject:'علوم'},
+  {id:'t5',name:'نورة فؤاد',subject:'دراسات إسلامية'},
+  {id:'t6',name:'خالد يوسف',subject:'حاسوب'},
+  {id:'t7',name:'هالة ناصر',subject:'لغة عربية'},
+  {id:'t8',name:'يوسف عادل',subject:'رياضيات'},
+  {id:'t9',name:'مريم سلام',subject:'علوم'},
+  {id:'t10',name:'طارق حبيب',subject:'اجتماعيات'},
+  {id:'t11',name:'رنا عثمان',subject:'لغة عربية'},
+  {id:'t12',name:'بلال صقر',subject:'لغة إنجليزية'},
+  {id:'t13',name:'دانة وليد',subject:'فيزياء'}
+];
+const DEMO_YEARS=['2024/2025','2025/2026','2026/2027','2027/2028'];
+const DEMO_YEAR='2025/2026';
+const PATHS_META={
+  national:{name:'المسار الوطني',flag:'🇯🇴'},
+  international:{name:'المسار الدولي',flag:'🌍'},
+  british:{name:'المسار البريطاني',flag:'🇬'}
+};
+const RECOMMENDED=3;
+const LS_KEY='school-wizard-demo-v1';
+const LS_WIZ=LS_KEY+'_wiz';
+
+/* تخزين آمن (يعمل حتى داخل iframe محجوب) */
+const _mem={};
+const store={
+  get(k){ try{return localStorage.getItem(k)}catch(e){return k in _mem?_mem[k]:null} },
+  set(k,v){ try{localStorage.setItem(k,v)}catch(e){_mem[k]=v} },
+  del(k){ try{localStorage.removeItem(k)}catch(e){delete _mem[k]} }
+};
+
+/* ============================================================
+   قاعدة البيانات + وضعان: بيانات حقيقية من مسار الإعداد، أو تجريبية
+============================================================ */
+function demoSeed(){
+  const y=DEMO_YEAR; const mk=(gid,letter,max,tid)=>({year:y,gradeId:gid,letter,max,teacherId:tid,fresh:false});
+  return {
+    school:null,paths:{},subjects:{},teachers:[],
+    sectionsByYear:{
+      [y]:[
+        mk('p1','أ',35,'t1'),mk('p1','ب',35,'t2'),mk('p1','ج',35,'t4'),
+        mk('p2','أ',35,'t5'),mk('p2','ب',35,'t3'),mk('p2','ج',35,'t7'),
+        mk('p3','أ',35,'t6'),mk('p3','ب',35,'t8'),mk('p3','ج',35,'t9'),
+        mk('p4','أ',35,'t10'),mk('p4','ب',35,'t11'),mk('p4','ج',35,'t12'),mk('p4','د',35,'t13'),
+        mk('p5','أ',35,'t3')
+      ]
+    }
+  };
+}
+function loadDB(){
+  try{const d=JSON.parse(store.get(LS_KEY));
+    if(d&&d.sectionsByYear) return Object.assign({school:null,paths:{},subjects:{},teachers:[]},d);
+  }catch(e){}
+  return demoSeed();
+}
+let db=loadDB();
+
+const MODE=db.school?'real':'demo';
+let SCHOOL_NAME,GRADES,TEACHERS,YEARS,CURRENT_YEAR,DEFAULT_MAX,TAB_YEARS;
+if(MODE==='real'){
+  SCHOOL_NAME=db.school.name;
+  GRADES=[];
+  for(const pid of db.school.paths){
+    const p=db.paths[pid]; if(!p) continue;
+    const stgs=Array.isArray(p)?p:(p.stages||[]);
+    stgs.forEach((st,si)=>st.levels.forEach((lv,li)=>GRADES.push({id:pid+'::'+si+':'+li,name:lv,stage:st.name,stageName:st.name,pathId:pid})));
+  }
+  TEACHERS=(db.teachers||[]).map(t=>({id:t.id,name:t.name,subject:t.subject||'',maxSections:t.maxSections||3}));
+  CURRENT_YEAR=db.school.yearLabel;
+  const s0=parseInt(String(CURRENT_YEAR).split('/')[0]);
+  YEARS=[CURRENT_YEAR,(s0+1)+'/'+(s0+2)];
+  DEFAULT_MAX=db.school.maxPerSection||35;
+  TAB_YEARS=[...new Set([...YEARS,...Object.keys(db.sectionsByYear)])].sort();
+}else{
+  SCHOOL_NAME='مدرسة الرواد (تجريبية)';
+  GRADES=DEMO_GRADES;
+  TEACHERS=DEMO_TEACHERS;
+  CURRENT_YEAR=DEMO_YEAR;
+  YEARS=DEMO_YEARS;
+  TAB_YEARS=DEMO_YEARS;
+  DEFAULT_MAX=35;
+}
+function stageTpl(g){ return g.stageName ? {sections:2,max:DEFAULT_MAX} : STAGES[g.stage].tpl; }
+function defaultWiz(){
+  const year=YEARS.find(y=>!(db.sectionsByYear[y]||[]).length)||YEARS[0];
+  return {step:1,year,grades:MODE==='real'?GRADES.slice(0,4).map(g=>g.id):['p1','p2','p3','p4'],source:'prev',sections:null,note:null,
+    globalMax:DEFAULT_MAX,allowNoTeacher:false,selRow:null,bulkSel:[],bulkTeacher:'',filter:'all',q:'',_mode:MODE};
+}
+function loadWiz(){
+  try{const w=JSON.parse(store.get(LS_WIZ));
+    if(w&&w.step&&w._mode===MODE) return Object.assign(defaultWiz(),w);
+  }catch(e){}
+  return defaultWiz();
+}
+let wiz=loadWiz();
+let view='dash';
+let dashYear=CURRENT_YEAR;
+let undoInfo=null;
+
+const save=()=>store.set(LS_KEY,JSON.stringify(db));
+const saveWiz=()=>store.set(LS_WIZ,JSON.stringify(wiz));
+
+/* ============================================================
+   أدوات مساعدة
+============================================================ */
+const $=s=>document.querySelector(s);
+const gradeById=id=>GRADES.find(g=>g.id===id);
+const tName=id=>{const t=TEACHERS.find(t=>t.id===id);return t?t.name:'—';};
+const letter=i=>LETTERS[i]||'?';
+const initials=n=>n.split(' ').slice(0,2).map(w=>w[0]).join('');
+const prevYearOf=y=>{const s=parseInt(y.split('/')[0]);return (s-1)+'/'+s;};
+const esc=s=>String(s).replace(/"/g,'&quot;');
+function flatSections(){
+  const out=[];
+  for(const g of GRADES) if(wiz.grades.includes(g.id)&&wiz.sections&&wiz.sections[g.id])
+    wiz.sections[g.id].forEach((s,i)=>out.push({gid:g.id,i,s}));
+  return out;
+}
+const totalSections=()=>flatSections().length;
+const assignedCount=()=>flatSections().filter(r=>r.s.teacherId).length;
+function loadOf(tid){
+  const base=(wiz.year===CURRENT_YEAR)?0:(db.sectionsByYear[CURRENT_YEAR]||[]).filter(s=>s.teacherId===tid).length;
+  const w=flatSections().filter(r=>r.s.teacherId===tid).length;
+  return base+w;
+}
+function toast(msg,opt={}){
+  const {type='',actionLabel,onAction,dur=4200}=opt;
+  const el=document.createElement('div');
+  el.className='toastx '+type;
+  el.innerHTML='<span>'+msg+'</span>';
+  if(actionLabel){
+    const b=document.createElement('button');
+    b.textContent=actionLabel;
+    b.onclick=()=>{el.remove(); if(onAction)onAction();};
+    el.appendChild(b);
+  }
+  $('#toast-root').appendChild(el);
+  setTimeout(()=>el.remove(),dur);
+}
+function askConfirm(title,body,onYes,yesLabel='تأكيد',danger=false){
+  const r=$('#modal-root');
+  r.innerHTML=`<div class="overlay" onclick="if(event.target===this)App.closeModal()">
+    <div class="modal"><h3>${title}</h3><p>${body}</p>
+    <div class="row">
+      <button class="btn ghost" onclick="App.closeModal()">إلغاء</button>
+      <button class="btn ${danger?'primary':'outline-p'}" id="m-yes">${yesLabel}</button>
+    </div></div></div>`;
+  $('#m-yes').onclick=()=>{App.closeModal();onYes();};
+}
+function closeModal(){ $('#modal-root').innerHTML=''; }
+
+/* ============================================================
+   منطق المعالج
+============================================================ */
+function prevYearHasData(){ return (db.sectionsByYear[prevYearOf(wiz.year)]||[]).length>0; }
+
+function buildFromSource(gid){
+  const g=gradeById(gid);
+  if(wiz.source==='prev'){
+    const prev=(db.sectionsByYear[prevYearOf(wiz.year)]||[]).filter(s=>s.gradeId===gid);
+    if(prev.length) return prev.map(s=>({max:s.max,teacherId:s.teacherId}));
+    const t=stageTpl(g);
+    return Array.from({length:t.sections},()=>({max:t.max,teacherId:null}));
+  }
+  if(wiz.source==='template'){
+    const t=stageTpl(g);
+    return Array.from({length:t.sections},()=>({max:t.max,teacherId:null}));
+  }
+  return [{max:wiz.globalMax,teacherId:null}];
+}
+
+function fullRegenerate(){
+  const missing=[];
+  const sec={};
+  for(const g of GRADES.filter(x=>wiz.grades.includes(x.id))){
+    sec[g.id]=buildFromSource(g.id);
+    if(wiz.source==='prev' && !(db.sectionsByYear[prevYearOf(wiz.year)]||[]).some(s=>s.gradeId===g.id)) missing.push(g.name);
+  }
+  wiz.sections=sec;
+  wiz.note=missing.length?('لم تتوفر بيانات العام الماضي للمستويات التالية، فاستُخدم قالب المرحلة: '+missing.join('، ')):null;
+  saveWiz();
+}
+function ensureStructure(){
+  if(!wiz.sections) wiz.sections={};
+  let changed=false;
+  for(const g of GRADES.filter(x=>wiz.grades.includes(x.id))){
+    if(!wiz.sections[g.id]){ wiz.sections[g.id]=buildFromSource(g.id); changed=true; }
+  }
+  if(changed) saveWiz();
+}
+
+/* ---------- الخطوة 1 ---------- */
+function pickYear(y){
+  if(y===wiz.year) return;
+  wiz.year=y; wiz.sections=null; wiz.note=null; saveWiz(); render();
+}
+function toggleGrade(id){
+  const i=wiz.grades.indexOf(id);
+  if(i>=0) wiz.grades.splice(i,1); else wiz.grades.push(id);
+  saveWiz(); render();
+}
+function selectAllGrades(){
+  wiz.grades=(wiz.grades.length===GRADES.length)?[]:GRADES.map(g=>g.id);
+  saveWiz(); render();
+}
+function goStep(n){
+  if(n===2) ensureStructure();
+  wiz.step=n; saveWiz(); render();
+}
+function nextStep(){
+  if(wiz.step===1 && !wiz.grades.length){ toast('اختر مستوى واحدًا على الأقل للمتابعة',{type:'warn'}); return; }
+  goStep(Math.min(4,wiz.step+1));
+}
+function backStep(){ goStep(Math.max(1,wiz.step-1)); }
+function restartWiz(){
+  askConfirm('إعادة البدء','سيُمحى كل ما أدخلته في المعالج (لا يتأثر أي عام آخر).',()=>{wiz=defaultWiz();saveWiz();render();toast('تم البدء من جديد');},'إعادة البدء',true);
+}
+
+/* ---------- الخطوة 2 ---------- */
+function changeSource(src){
+  if(src===wiz.source) return;
+  const doIt=()=>{ wiz.source=src; fullRegenerate(); render(); toast('تم توليد البنية من: '+(src==='prev'?'العام الماضي':src==='template'?'القالب الجاهز':'الصفر')); };
+  if(wiz.sections&&Object.values(wiz.sections).some(a=>a.length))
+    askConfirm('تغيير مصدر البنية','سيُعاد توليد البنية وستُستبدل تعديلاتك الحالية في هذه الخطوة.',doIt,'متابعة',true);
+  else doIt();
+}
+function reapplyPrev(){
+  askConfirm('اعتماد الاقتراح','سيُعاد استيراد بنية العام السابق وستُستبدل تعديلاتك الحالية.',()=>{fullRegenerate();render();toast('تم اعتماد الاقتراح');},'اعتماد',true);
+}
+function addSection(gid){
+  if((wiz.sections[gid]||[]).length>=LETTERS.length){ toast('الحد الأقصى لعدد شعب الصف 15'); return; }
+  wiz.sections[gid].push({max:wiz.globalMax,teacherId:null}); saveWiz(); render();
+}
+function removeSection(gid,i){
+  if(wiz.sections[gid].length<=1){ toast('يجب أن يحتفظ كل صف بشعبة واحدة على الأقل',{type:'warn'}); return; }
+  wiz.sections[gid].splice(i,1); saveWiz(); render();
+}
+function gradeMax(gid,d){
+  const arr=wiz.sections[gid]; if(!arr||!arr.length) return;
+  const v=Math.max(1,Math.min(60,arr[0].max+d));
+  arr.forEach(s=>s.max=v); saveWiz(); render();
+}
+function setGlobal(d){ wiz.globalMax=Math.max(1,Math.min(60,wiz.globalMax+d)); saveWiz(); render(); }
+function applyMaxAll(){
+  flatSections().forEach(r=>r.s.max=wiz.globalMax);
+  saveWiz(); render(); toast(`تم تطبيق الحد الأقصى (${wiz.globalMax}) على جميع الشعب`);
+}
+
+/* ---------- الخطوة 3 ---------- */
+function selectRow(gid,i){
+  const same=wiz.selRow&&wiz.selRow.gid===gid&&wiz.selRow.i===i;
+  wiz.selRow=same?null:{gid,i}; saveWiz(); render();
+}
+function pickTeacher(tid){
+  if(!wiz.selRow){ toast('انقر على سطر الشعبة أولًا، ثم اختر المعلّم',{type:'warn'}); return; }
+  const {gid,i}=wiz.selRow;
+  wiz.sections[gid][i].teacherId=tid;
+  wiz.selRow=null; saveWiz(); render();
+  toast(`عُيّن ${tName(tid)} مربّي صف`);
+}
+function clearTeacher(gid,i){ wiz.sections[gid][i].teacherId=null; saveWiz(); render(); }
+function setFilter(f){ wiz.filter=f; saveWiz(); renderTeachers(); }
+function setSearch(v){ wiz.q=v; saveWiz(); renderTeachers(); }
+function renderTeachers(){
+  const el=$('#tlist'); if(!el) return;
+  el.innerHTML=teacherCards().join('')||'<div class="smore">لا نتائج مطابقة</div>';
+}
+function teacherCards(){
+  const list=TEACHERS.filter(t=>{
+    const okF=wiz.filter==='all'||t.subject===wiz.filter;
+    const q=wiz.q.trim();
+    const okQ=!q||t.name.includes(q)||t.subject.includes(q);
+    return okF&&okQ;
+  });
+  if(!TEACHERS.length) return [`<div class="warnbox" style="margin:0">⚠️ لا يوجد معلمون بعد — أضفهم من شاشة <a href="wiz-teachers.html" style="color:var(--p)">بيانات المعلمين</a> ثم عُد هنا.</div>`];
+  return list.map(t=>{
+    const rec=t.maxSections||RECOMMENDED;
+    const load=loadOf(t.id); const warn=load>rec;
+    return `<div class="tcard" onclick="App.pickTeacher('${t.id}')" title="انقر لتعيينه للشعبة المحددة">
+      <div class="tav">${initials(t.name)}</div>
+      <div><b>${t.name}</b><small>${esc(t.subject)} · ${load} شعبة${warn?` <span class="warnload">⚠ فوق الموصى به (${rec})</span>`:''}</small></div>
+    </div>`;
+  });
+}
+function allRowKeys(){ return flatSections().map(r=>r.gid+':'+r.i); }
+function toggleBulk(key){
+  const i=wiz.bulkSel.indexOf(key);
+  if(i>=0) wiz.bulkSel.splice(i,1); else wiz.bulkSel.push(key);
+  saveWiz(); render();
+}
+function toggleAllBulk(checked){ wiz.bulkSel=checked?allRowKeys():[]; saveWiz(); render(); }
+function setBulkTeacher(v){ wiz.bulkTeacher=v; saveWiz(); render(); }
+function bulkAssign(){
+  if(!wiz.bulkTeacher){ toast('اختر المعلّم أولًا من القائمة',{type:'warn'}); return; }
+  if(!wiz.bulkSel.length){ toast('حدّد شعبًا أولًا (أو «تحديد الكل»)',{type:'warn'}); return; }
+  let c=0;
+  wiz.bulkSel.forEach(key=>{
+    const [gid,i]=key.split(':');
+    if(wiz.sections[gid]&&wiz.sections[gid][+i]){ wiz.sections[gid][+i].teacherId=wiz.bulkTeacher; c++; }
+  });
+  saveWiz(); render();
+  toast(`عُيّن ${tName(wiz.bulkTeacher)} على ${c} شعبة`);
+}
+function toggleAllowNo(v){ wiz.allowNoTeacher=v; saveWiz(); render(); }
+
+/* ---------- الخطوة 4 ---------- */
+function editRow(gid,i,which){
+  if(which==='t'){ wiz.step=3; wiz.selRow={gid,i}; }
+  else wiz.step=2;
+  saveWiz(); render();
+}
+function doCreate(){
+  const existing=(db.sectionsByYear[wiz.year]||[]).length;
+  if(existing){ toast('هذا العام فيه شعب مسجلة — لا يمكن إعادة إنشاؤها كاملة. استخدم زر «＋ إضافة شعبة» في لوحة الإدارة لإضافة شعبة دون المساس بالقديمة',{type:'warn',dur:7000}); return; }
+  const rows=[];
+  for(const g of GRADES) if(wiz.grades.includes(g.id)&&wiz.sections&&wiz.sections[g.id])
+    wiz.sections[g.id].forEach((s,i)=>rows.push({year:wiz.year,gradeId:g.id,letter:letter(i),max:s.max,teacherId:s.teacherId,fresh:true}));
+  undoInfo={year:wiz.year,before:[]};
+  db.sectionsByYear[wiz.year]=rows; save();
+  const year=wiz.year, n=rows.length, gCount=wiz.grades.length;
+  wiz=defaultWiz(); saveWiz();
+  view='dash'; dashYear=year; render();
+  toast(`✅ تم إنشاء ${n} شعبة في ${gCount} مستويات للعام ${year}${rows.some(r=>!r.teacherId)?' (بعضها دون مربّي صف)':''}`,{
+    type:'ok',actionLabel:'تراجع',dur:10000,onAction:()=>App.undoCreate()
+  });
+}
+function undoCreate(){
+  if(!undoInfo) return;
+  db.sectionsByYear[undoInfo.year]=undoInfo.before;
+  save(); render(); undoInfo=null;
+  toast('تم التراجع عن الإنشاء');
+}
+
+/* ============================================================
+   لوحة الإدارة
+============================================================ */
+function setDashYear(y){ dashYear=y; render(); }
+function openWizard(){ view='wiz'; render(); }
+function dashTeacher(i,tid){
+  const s=db.sectionsByYear[dashYear][i];
+  s.teacherId=tid||null; s.fresh=false; save(); render();
+}
+function dashDelete(i){
+  const secs=db.sectionsByYear[dashYear];
+  const s=secs[i];
+  const g=gradeById(s.gradeId);
+  const fullKey=dashYear+'::'+s.gradeId+'::'+s.letter;
+  const kids=(db.students||[]).filter(st=>st.sectionKey===fullKey);
+  const body=kids.length
+    ?`شعبة «${s.letter}» من ${g.name} فيها <b>${kids.length} طلاب</b>. حذفها سيعيدهم إلى قائمة «بانتظار التوزيع» في شاشة التوزيع لإعادة توزيعهم — الشعب الأخرى لا تتأثر.`
+    :`سيتم حذف شعبة «${s.letter}» من ${g.name} (${dashYear}). لا يوجد طلاب فيها.`;
+  askConfirm('حذف الشعبة',body,()=>{
+    kids.forEach(st=>st.sectionKey=null);
+    db.sectionsByYear[dashYear].splice(i,1); save(); render();
+    toast(kids.length?`حُذفت الشعبة وعاد ${kids.length} طلاب إلى قائمة الانتظار`:'تم حذف الشعبة',kids.length?{type:'warn'}:{});
+  },'حذف',true);
+}
+
+/* ---------- إضافة شعبة إلى جدول عام قائم (بدون أي لمس للشعب الموجودة) ---------- */
+let addSel=null;
+function freeLetters(y,gid){
+  const used=new Set((db.sectionsByYear[y]||[]).filter(s=>s.gradeId===gid).map(s=>s.letter));
+  return LETTERS.filter(l=>!used.has(l));
+}
+function openAddSection(){
+  if(!GRADES.length){ toast('لا توجد مستويات بعد — أضِفها من شاشة «المستويات الدراسية»',{type:'warn'}); return; }
+  const secs=db.sectionsByYear[dashYear]||[];
+  const gid=secs.length?secs[0].gradeId:GRADES[0].id;
+  addSel={gid,letter:(freeLetters(dashYear,gid)[0]||null),max:(secs.filter(s=>s.gradeId===gid)[0]||{}).max||DEFAULT_MAX,teacherId:''};
+  renderAddModal();
+}
+function addSetGid(v){
+  addSel.gid=v;
+  addSel.letter=freeLetters(dashYear,v)[0]||null;
+  addSel.max=(db.sectionsByYear[dashYear]||[]).filter(s=>s.gradeId===v)[0]?.max||DEFAULT_MAX;
+  renderAddModal();
+}
+function addSetLetter(v){ addSel.letter=v; renderAddModal(); }
+function addSetMax(v){ addSel.max=Math.max(5,Math.min(60,parseInt(v)||DEFAULT_MAX)); renderAddModal(); }
+function addSetTeacher(v){ addSel.teacherId=v||null; renderAddModal(); }
+function closeAddSection(){ addSel=null; closeModal(); }
+function renderAddModal(){
+  if(!addSel){ closeModal(); return; }
+  if(!GRADES.length){ closeModal(); return; }
+  const free=freeLetters(dashYear,addSel.gid);
+  const gradeOpts=GRADES.map(g=>
+    `<option value="${g.id}" ${g.id===addSel.gid?'selected':''}>${g.pathId&&PATHS_META[g.pathId]?PATHS_META[g.pathId].flag+' ':''}${esc(g.name)}</option>`).join('');
+  const letterOpts=free.length
+    ?free.map(l=>`<option value="${l}" ${l===addSel.letter?'selected':''}>شعبة ${l}</option>`).join('')
+    :'<option value="">— لا حروف متاحة (الحد الأقصى 15 شعبة) —</option>';
+  const teacherOpts=`<option value="">— بدون —</option>`+TEACHERS.map(t=>
+    `<option value="${t.id}" ${addSel.teacherId===t.id?'selected':''}>${t.name}${t.subject?' — '+esc(t.subject):''}</option>`).join('');
+  $('#modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)App.closeAddSection()">
+    <div class="modal">
+      <h3>＋ إضافة شعبة إلى ${dashYear}</h3>
+      <p>تُضاف الشعبة الجديدة إلى الجدول الحالي <b>دون أي تأثير على الشعب الموجودة أو طلابها</b>.</p>
+      <label class="mlabel">المستوى</label>
+      <select class="inline" style="width:100%" onchange="App.addSetGid(this.value)">${gradeOpts}</select>
+      <div style="display:flex;gap:12px;align-items:flex-end">
+        <div style="flex:1"><label class="mlabel">حرف الشعبة (المتاح فقط)</label>
+          <select class="inline" style="width:100%" onchange="App.addSetLetter(this.value)">${letterOpts}</select></div>
+        <div><label class="mlabel">الحد الأقصى</label>
+          <input class="maxin" type="number" min="5" max="60" value="${addSel.max}" onchange="App.addSetMax(this.value)"></div>
+      </div>
+      <label class="mlabel">مربّي الصف (اختياري)</label>
+      <select class="inline" style="width:100%" onchange="App.addSetTeacher(this.value)">${teacherOpts}</select>
+      <div class="row" style="margin-top:18px">
+        <button class="btn ghost" onclick="App.closeAddSection()">إلغاء</button>
+        <button class="btn primary" ${free.length?'':'disabled'} onclick="App.doAddSection()">إنشاء الشعبة</button>
+      </div>
+    </div></div>`;
+}
+function doAddSection(){
+  if(!addSel) return;
+  const free=freeLetters(dashYear,addSel.gid);
+  if(!free.length){ toast('لا حروف شعبة متاحة لهذا المستوى (الحد الأقصى 15)',{type:'warn'}); return; }
+  if(!free.includes(addSel.letter)) addSel.letter=free[0];
+  const max=Math.max(5,Math.min(60,parseInt(addSel.max)||DEFAULT_MAX));
+  const row={year:dashYear,gradeId:addSel.gid,letter:addSel.letter,max,teacherId:addSel.teacherId||null,fresh:true};
+  (db.sectionsByYear[dashYear]=db.sectionsByYear[dashYear]||[]).push(row);
+  save();
+  const g=gradeById(row.gradeId);
+  closeAddSection(); render();
+  toast(`✅ أُنشئت شعبة ${row.letter} من ${g?g.name:'—'} (${dashYear}) — بقيت الشعب الأخرى كما هي`,{type:'ok'});
+}
+function dashMax(i,v){
+  const s=db.sectionsByYear[dashYear][i];
+  const n=parseInt(v);
+  if(!n||n<5||n>60){ toast('الحد الأقصى بين 5 و60',{type:'warn'}); return; }
+  s.max=n; s.fresh=false; save(); render();
+}
+function repairOrphans(){
+  const secs=db.sectionsByYear[dashYear]||[];
+  const valid=new Set(secs.map(s=>dashYear+'::'+s.gradeId+'::'+s.letter));
+  let n=0;
+  (db.students||[]).forEach(st=>{
+    if(st.sectionKey&&st.sectionKey.startsWith(dashYear+'::')&&!valid.has(st.sectionKey)){ st.sectionKey=null; n++; }
+  });
+  save(); render();
+  toast(n?`عُد ${n} طلاب إلى قائمة «بانتظار التوزيع»`:'لا يوجد طلاب محتاجون للإصلاح',{type:n?'warn':'ok'});
+}
+function resetDemo(){
+  if(MODE==='real'){
+    askConfirm('مسح بيانات الشعب','سيتم مسح كل الشعب المنشأة فقط — لا يتأثر إعداد المدرسة (المسارات، المعلمون...).',()=>{
+      db.sectionsByYear={}; save(); render(); toast('تم مسح الشعب');
+    },'مسح',true);
+    return;
+  }
+  askConfirm('إعادة تعيين النموذج','سيُمحى كل ما أنشأته ويعود النموذج إلى بياناته الأصلية.',()=>{
+    store.del(LS_KEY); store.del(LS_WIZ);
+    db=demoSeed(); wiz=defaultWiz(); view='dash'; dashYear=CURRENT_YEAR;
+    save(); saveWiz(); render(); toast('تمت إعادة التعيين');
+  },'إعادة التعيين',true);
+}
+
+/* ============================================================
+   التصيير (Rendering)
+============================================================ */
+function appbar(crumb){
+  return `<div class="appbar">
+    <div class="brand"><span class="logo">🎓</span>${esc(SCHOOL_NAME)}<span class="crumb">${crumb}</span></div>
+    <div class="appbar-l">🔔<span class="uav">ع</span></div>
+  </div>`;
+}
+
+function renderDashboard(){
+  const secs=db.sectionsByYear[dashYear]||[];
+  const used=new Set(secs.map(s=>s.gradeId));
+  const validKeys=new Set(secs.map(s=>dashYear+'::'+s.gradeId+'::'+s.letter));
+  const orphans=(db.students||[]).filter(st=>st.sectionKey&&st.sectionKey.startsWith(dashYear+'::')&&!validKeys.has(st.sectionKey));
+  const orphanBox=orphans.length
+    ?`<div class="warnbox" style="margin:14px 26px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">⚠️ يوجد <b>${orphans.length} طلاب</b> موزَّعون على شعب غير موجودة في جدول ${dashYear} (حُذفت شعبهم من جدول آخر).
+       <button class="btn tiny outline-p" style="margin-inline-start:auto" onclick="App.repairOrphans()">إرجاعهم لقائمة الانتظار</button></div>`
+    :'';
+  const tabs=TAB_YEARS.map(YY=>{
+    const n=(db.sectionsByYear[YY]||[]).length;
+    return `<span class="chip ${YY===dashYear?'sel':''}" onclick="App.setDashYear('${YY}')">${YY}${n?` <small>(${n} شعبة)</small>`:''}</span>`;
+  }).join('');
+  let body;
+  if(!secs.length){
+    body=`<div class="dash-body">
+      <div class="empty">
+        <div class="ic">🗂️</div>
+        <b>لم تُنشأ صفوف أو شعب للعام الدراسي ${dashYear} بعد</b>
+        <p>ابدأ بالمعالج — تتم البنية والشعب والحد الأقصى وتعيين مربّي الصف كلها بالنقرات.</p>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+          <button class="btn primary" onclick="App.openWizard()">＋ إنشاء صفوف وشعب</button>
+          <button class="btn outline-p" onclick="App.openAddSection()">أو أضِف شعبة واحدة مباشرة</button>
+        </div>
+      </div>
+      <div class="tip" style="margin-top:14px">💡 جرّب: اختر «نسخ من العام الماضي» في المعالج لتستيراد بنية ${CURRENT_YEAR} بنقرة واحدة، ثم غيّر ما يناسبك.</div>
+    </div>`;
+  }else{
+    const rows=secs.map((s,i)=>{
+      const g=gradeById(s.gradeId);
+      const fresh=s.fresh?'<span class="newbadge">جديد</span>':'';
+      const key=dashYear+'::'+s.gradeId+'::'+s.letter;
+      const cnt=(db.students||[]).filter(s2=>s2.sectionKey===key).length;
+      const full=cnt>=s.max;
+      return `<tr class="${s.fresh?'new':''}">
+        <td>${g.name}</td>
+        <td>${s.letter} ${fresh}</td>
+        <td><select class="inline" onchange="App.dashTeacher(${i},this.value)">
+          <option value="" ${!s.teacherId?'selected':''}>— بدون —</option>
+          ${TEACHERS.map(t=>`<option value="${t.id}" ${s.teacherId===t.id?'selected':''}>${t.name}</option>`).join('')}
+        </select></td>
+        <td><input class="maxin" type="number" min="5" max="60" value="${s.max}" onchange="App.dashMax(${i},this.value)" title="عدّل الحد الأقصى ثم اضغط Tab"></td>
+        <td>${cnt}/${s.max}${full?' <span style="color:var(--bad);font-weight:800">ممتلئة</span>':''}</td>
+        <td>نشطة</td>
+        <td><button class="btn tiny ghost" onclick="App.dashDelete(${i})">حذف</button></td>
+      </tr>`;
+    }).join('');
+    body=`<div class="stats">
+        <span class="stat"><b>${used.size}</b> مستويات</span>
+        <span class="stat"><b>${secs.length}</b> شعبة</span>
+        <span class="stat"><b>${secs.filter(s=>s.teacherId).length}/${secs.length}</b> مربّو صف معيّنون</span>
+        <span class="stat"><b>${(db.students||[]).filter(s2=>s2.sectionKey&&s2.sectionKey.startsWith(dashYear+'::')).length}</b> طالب موزّع</span>
+      </div>
+      <div class="dash-body"><div class="tblwrap"><table class="tbl">
+        <tr><th>الصف</th><th>الشعبة</th><th>مربّي الصف</th><th>الحد الأقصى</th><th>الطلاب</th><th>الحالة</th><th></th></tr>
+        ${rows}
+      </table></div></div>`;
+  }
+  return `${appbar('/ الإعدادات / الصفوف والشعب')}
+    <div class="dashhead">
+      <div><h2>الصفوف والشعب</h2><div class="sub">إدارة البنية الأكاديمية</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn outline-p" onclick="App.openAddSection()">＋ إضافة شعبة</button>
+        <button class="btn primary" onclick="App.openWizard()">＋ إنشاء صفوف وشعب</button>
+      </div>
+    </div>
+    <div class="ytabs">${tabs}</div>
+    ${orphanBox}
+    ${body}`;
+}
+
+function stepsIndicator(){
+  const names=['العام والمستوى','الشعب والحد الأقصى','مربّو الصف','المراجعة'];
+  return names.map((s,i)=>{
+    const n=i+1;
+    const cls=n<wiz.step?'done':(n===wiz.step?'on':'');
+    const back=n<wiz.step?`onclick="App.goStep(${n})"`:'';
+    return `<div class="wstep ${cls} ${n<wiz.step?'back':''}" ${back}><span class="d">${n<wiz.step?'✓':AR[n]}</span>${s}</div>`;
+  }).join('<div class="wline"></div>');
+}
+
+function stepBody(){
+  if(wiz.step===1){
+    if(!GRADES.length) return `<div class="warnbox" style="margin:0 0 14px">⚠️ لا توجد مستويات معرّفة لأي مسار — أضفها من <a href="wiz-stages.html" style="color:var(--p);font-weight:800">المستويات الدراسية</a> ثم عُد هنا.</div>`;
+    const years=YEARS.map(YY=>{
+      const dis=(db.sectionsByYear[YY]||[]).length>0;
+      const sel=YY===wiz.year;
+      return `<span class="chip ${sel?'sel':''} ${dis?'off':''}" ${dis?`title="يوجد شعب مسجلة في هذا العام — تُدار من صفحة الإدارة"`:`onclick="App.pickYear('${YY}')"`}>${YY}${sel?' ✓':''}</span>`;
+    }).join('');
+    const groups={};
+    for(const g of GRADES){const k=g.pathId||'__demo';(groups[k]=groups[k]||[]).push(g);}
+    const grades=Object.entries(groups).map(([pid,arr])=>
+      (pid!=='__demo'?`<div style="font-size:13px;font-weight:800;margin:14px 0 8px">${PATHS_META[pid].flag} ${PATHS_META[pid].name}</div>`:'')+
+      `<div class="chips">${arr.map(g=>{const sel=wiz.grades.includes(g.id);
+        return `<span class="chip ${sel?'sel':''}" onclick="App.toggleGrade('${g.id}')">${g.name}${sel?' ✓':''}</span>`;}).join('')}</div>`
+    ).join('');
+    const all=wiz.grades.length===GRADES.length;
+    return `<div class="card">
+      <div class="card-h">العام الدراسي</div>
+      <div class="chips">${years}</div>
+      <p class="hint">الافتراضي هو العام القادم. الأعوام التي سُجّلت فيها شعب لا تُعاد إنشاؤها من هنا — تُدار مباشرة من لوحة الإدارة (إضافة شعبة / حذف / تعديل الحد الأقصى) دون أي تأثير على الشعب الموجودة.</p>
+    </div>
+    <div class="card">
+      <div class="card-h">اختر الصفوف / المستويات
+        <a class="btn tiny outline-p" style="margin-inline-start:auto" onclick="App.selectAllGrades()">${all?'إلغاء التحديد':'اختيار الكل'}</a>
+      </div>
+      <div class="chips">${grades}</div>
+    </div>
+    <div class="tip">💡 «اختيار الكل» ينشئ البنية لكل المستويات دفعة واحدة.</div>`;
+  }
+
+  if(wiz.step===2){
+    ensureStructure();
+    const py=prevYearOf(wiz.year);
+    const hasPrev=prevYearHasData();
+    const srcs=[
+      {id:'template',t:'📦 قالب جاهز',d:'قوالب قياسية: 3 شعب لكل صف أساسي · 2 لكل صف ثانوي · حضانة/روضة بشعبتين'},
+      {id:'prev',t:'📋 نسخ من العام الماضي',d:`بنية ${py} جاهزة بالكامل وقابلة للتعديل`,rec:true},
+      {id:'scratch',t:'✍️ من الصفر',d:'شعبة واحدة لكل صف — أضف المزيد بأزرار +'}
+    ].map(s=>`<div class="src ${wiz.source===s.id?'sel':''}" onclick="App.changeSource('${s.id}')">
+      ${s.rec?'<span class="rec">موصى به</span>':''}
+      <b>${s.t}</b><p>${s.d}</p></div>`).join('');
+
+    let banner='';
+    if(wiz.source==='prev'){
+      const n=totalSections();
+      banner=hasPrev
+        ?`<div class="banner"><span><b>تم الاستيراد من ${py}:</b> ${n} شعبة في ${wiz.grades.length} مستويات — عدّل ما يناسبك بالأسفل.</span>
+           <button class="btn tiny outline-p" onclick="App.reapplyPrev()">إعادة اعتماد الاقتراح</button></div>`
+        :`<div class="banner"><span>لا توجد بيانات في ${py} — استُخدم قالب المرحلة لكل مستوى.</span></div>`;
+    }
+    const rows=GRADES.filter(g=>wiz.grades.includes(g.id)).map(g=>{
+      const arr=wiz.sections[g.id]||[];
+      const chips=arr.map((s,i)=>`<span class="chip sec">${letter(i)} <span class="x" onclick="App.removeSection('${g.id}',${i})" title="حذف الشعبة">✕</span></span>`).join('')+
+        `<span class="chip add" onclick="App.addSection('${g.id}')" title="إضافة شعبة">＋</span>`;
+      return `<div class="gsec">
+        <div class="gname">${g.name}<small>${g.stageName||STAGES[g.stage].name}</small></div>
+        <div class="chips">${chips}</div>
+        <div class="gmax">الحد الأقصى <span class="num"><button onclick="App.gradeMax('${g.id}',1)">＋</button><b>${arr.length?arr[0].max:'—'}</b><button onclick="App.gradeMax('${g.id}',-1)">−</button></span></div>
+      </div>`;
+    }).join('');
+    const note=wiz.note?`<div class="tip" style="margin-bottom:14px">⚠️ ${wiz.note}</div>`:'';
+    return `<div class="card"><div class="card-h">مصدر البنية</div><div class="srcs">${srcs}</div></div>
+      ${banner}${note}
+      <div class="card"><div class="card-h">الشعب لكل صف <span style="font-weight:600;color:var(--faint);font-size:12px">(الأسماء تُنشأ تلقائيًا — الإضافة والحذف بأزرار + / ✕)</span></div>${rows}</div>
+      <div class="globalmax"><span>الحد الأقصى الافتراضي للتلاميد في الشعبة</span>
+        <span class="num"><button onclick="App.setGlobal(1)">＋</button><b>${wiz.globalMax}</b><button onclick="App.setGlobal(-1)">−</button></span>
+        <button class="btn tiny" style="background:#fff;color:var(--p2)" onclick="App.applyMaxAll()">تطبيق على جميع الشعب</button>
+      </div>`;
+  }
+
+  if(wiz.step===3){
+    const total=totalSections(), assigned=assignedCount();
+    const subSet=[...new Set(TEACHERS.map(t=>t.subject).filter(Boolean))];
+    const filters=['all',...subSet].map(f=>
+      `<span class="chip sm ${wiz.filter===f?'sel':''}" onclick="App.setFilter('${esc(f)}')">${f==='all'?'الكل':esc(f)}</span>`).join('');
+    const selLabel=wiz.selRow?(()=>{const g=gradeById(wiz.selRow.gid);return `${g.name} / ${letter(wiz.selRow.i)}`;})():'';
+    const hint=wiz.selRow?`<div class="hintbar">✦ اختر معلّمًا الآن لتعيينه إلى: ${selLabel}</div>`:'';
+    const rows=flatSections().map(r=>{
+      const g=gradeById(r.gid); const key=r.gid+':'+r.i;
+      const isSel=wiz.selRow&&wiz.selRow.gid===r.gid&&wiz.selRow.i===r.i;
+      const chk=wiz.bulkSel.includes(key);
+      const right=r.s.teacherId
+        ?`<span class="tchip">${tName(r.s.teacherId)} ✓ <span class="x" onclick="event.stopPropagation();App.clearTeacher('${r.gid}',${r.i})" title="إلغاء التعيين">✕</span></span>`
+        :`<span class="pendingtag">لم يُعيَّن</span>`;
+      return `<div class="srow ${isSel?'sel':''}" onclick="App.selectRow('${r.gid}',${r.i})">
+        <span><input type="checkbox" ${chk?'checked':''} style="accent-color:var(--p);width:15px;height:15px;vertical-align:-2px;margin-inline-end:8px" onclick="event.stopPropagation();App.toggleBulk('${key}')">${g.name} / ${letter(r.i)}</span>
+        ${right}
+      </div>`;
+    }).join('');
+    const allChecked=wiz.bulkSel.length===total&&total>0;
+    const unassigned=total-assigned;
+    const allowRow=unassigned>0?`<label style="font-size:12.5px;font-weight:700;color:var(--warn);display:flex;gap:8px;align-items:center;cursor:pointer">
+      <input type="checkbox" ${wiz.allowNoTeacher?'checked':''} style="accent-color:var(--warn);width:15px;height:15px" onchange="App.toggleAllowNo(this.checked)">
+      إنشاء الشعب غير المعيّنة (${unassigned}) دون مربّي صف (مع تحذير)</label>`:'';
+    return `<div class="tlayout">
+      <aside class="card">
+        <div class="card-h">المعلمون</div>
+        <div class="chips" style="margin-bottom:12px">${filters}</div>
+        <input class="search" type="text" placeholder="بحث بالاسم أو التخصص (اختياري)…" value="${esc(wiz.q)}" oninput="App.setSearch(this.value)">
+        <div id="tlist">${teacherCards().join('')||'<div class="smore">لا نتائج مطابقة</div>'}</div>
+      </aside>
+      <div class="card">
+        <div class="shead">
+          <div class="card-h" style="margin:0">الشعب</div>
+          <div class="pbar"><i style="width:${total?Math.round(assigned/total*100):0}%"></i></div>
+          <span class="progresspill">${assigned}/${total} معيّن</span>
+        </div>
+        ${hint}
+        ${rows}
+        <div class="bulk">
+          <label style="display:flex;gap:7px;align-items:center;cursor:pointer">
+            <input type="checkbox" ${allChecked?'checked':''} style="accent-color:var(--p);width:15px;height:15px" onchange="App.toggleAllBulk(this.checked)"> تحديد الكل (${total})
+          </label>
+          <span>تعيين معلّم واحد للمحددة:
+            <select class="inline" onchange="App.setBulkTeacher(this.value)">
+              <option value="">— اختر —</option>
+              ${TEACHERS.map(t=>`<option value="${t.id}" ${wiz.bulkTeacher===t.id?'selected':''}>${t.name} (${loadOf(t.id)} شعبة)</option>`).join('')}
+            </select>
+          </span>
+          <button class="btn tiny primary" onclick="App.bulkAssign()">تعيين (${wiz.bulkSel.length})</button>
+        </div>
+      </div>
+    </div>
+    ${allowRow?`<div style="margin-top:12px">${allowRow}</div>`:''}`;
+  }
+
+  /* الخطوة 4 */
+  const total=totalSections(), assigned=assignedCount(), unassigned=total-assigned;
+  const checks=[];
+  checks.push(unassigned===0
+    ?`<div class="v ok"><span>✅</span><span>تم تعيين مربّي صف لكل الشعب — <b>${assigned}/${total}</b></span></div>`
+    :`<div class="v warn"><span>⚠️</span><span><b>${unassigned}</b> شعب دون مربّي صف (اخترت المتابعة — ستُنشأ دون تعيين)</span></div>`);
+  checks.push(`<div class="v ok"><span>✅</span><span>تم تحديد الحد الأقصى للتلاميد لكل شعبة (افتراضي ${wiz.globalMax} مع تجاوزات على مستوى الصف)</span></div>`);
+  const over={};
+  flatSections().forEach(r=>{ if(r.s.teacherId) over[r.s.teacherId]=(over[r.s.teacherId]||0)+1; });
+  for(const tid in over){
+    const rec=(TEACHERS.find(t=>t.id===tid)||{}).maxSections||RECOMMENDED;
+    const load=loadOf(tid);
+    if(load>rec) checks.push(`<div class="v warn"><span>⚠️</span><span>${tName(tid)} سيكون معيّنًا على <b>${load} شعب</b> (الحد المسموح له ${rec})</span></div>`);
+  }
+  const rows=flatSections().map(r=>{
+    const g=gradeById(r.gid);
+    const t=r.s.teacherId?tName(r.s.teacherId)+(loadOf(r.s.teacherId)>RECOMMENDED?' ⚠':''):'—';
+    return `<tr>
+      <td>${g.name}</td><td>${letter(r.i)}</td>
+      <td>${t} <a class="edit" onclick="App.editRow('${r.gid}',${r.i},'t')">تعديل</a></td>
+      <td>${r.s.max} <a class="edit" onclick="App.editRow('${r.gid}',${r.i},'m')">تعديل</a></td>
+    </tr>`;
+  }).join('');
+  return `<div class="valid">${checks.join('')}</div>
+    <div class="card">
+      <div class="card-h">الملخص — ${wiz.grades.length} مستويات · ${total} شعبة</div>
+      <div class="tblwrap" style="border:0"><table class="tbl">
+        <tr><th>الصف</th><th>الشعبة</th><th>مربّي الصف</th><th>الحد الأقصى</th></tr>
+        ${rows}
+      </table></div>
+      <p class="hint">«تعديل» يعيدك مباشرة إلى الخطوة المعنية دون فقدان باقي المدخلات.</p>
+    </div>`;
+}
+
+function wizardFooter(){
+  const total=totalSections(), assigned=assignedCount();
+  let right='',left='';
+  if(wiz.step===1){
+    left=`<button class="btn ghost" onclick="App.cancelWizard()">إلغاء</button>`;
+    right=`<button class="btn primary" onclick="App.nextStep()" ${wiz.grades.length?'':'disabled'}>التالي ←</button>`;
+    return `${left}<div class="footnote">اختر العام والمستويات ثم تابع</div>${right}`;
+  }else if(wiz.step===2){
+    left=`<button class="btn ghost" onclick="App.backStep()">→ رجوع</button>`;
+    right=`<button class="btn primary" onclick="App.nextStep()">التالي ←</button>`;
+    return `${left}<div class="footnote" style="display:flex;align-items:center;gap:14px">سيتم إنشاء <b style="color:var(--p2)">${total} شعبة</b> في ${wiz.grades.length} مستويات</div>${right}`;
+  }else if(wiz.step===3){
+    const ok=assigned===total||wiz.allowNoTeacher;
+    left=`<button class="btn ghost" onclick="App.backStep()">→ رجوع</button>`;
+    right=`<button class="btn primary" onclick="App.nextStep()" ${ok?'':'disabled'}>التالي ←${ok?'':` (${assigned}/${total})`}</button>`;
+    return `${left}<div class="footnote">${ok?'اكتمل التعيين — يمكنك المتابعة':`يتبقى ${total-assigned} شعب دون مربّي صف`}</div>${right}`;
+  }
+  /* الخطوة 4 */
+  left=`<button class="btn ghost" onclick="App.backStep()">→ رجوع</button>`;
+  right=`<button class="btn primary" onclick="App.doCreate()">✓ تأكيد وإنشاء (${total} شعبة)</button>`;
+  return `${left}<div class="footnote">لن يُنشأ أي شيء قبل زرك — العملية ذرّية</div>${right}`;
+}
+
+function renderWizard(){
+  const foot=wizardFooter();
+  return `${appbar('/ المعالج: إنشاء الصفوف والشعب')}
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">إنشاء الصفوف والشعب
+          ${wiz.step>1?`<a class="restart" onclick="App.restartWiz()">↺ إعادة البدء</a>`:''}
+        </div>
+        <div class="wizsub">العام الدراسي ${wiz.year} · 4 خطوات · ${totalSections()} شعبة</div>
+      </div>
+      <div class="wsteps">${stepsIndicator()}</div>
+    </div>
+    <div class="wizbody">${stepBody()}</div>
+    <div class="wizfoot">${foot}</div>`;
+}
+
+function render(){
+  const banner=MODE==='demo'
+    ?`<div class="tip" style="margin:0 22px 14px">⚠️ <b>تعمل حاليًا ببيانات تجريبية</b> — أكمل <a href="setup.html" style="color:var(--p);font-weight:800">مسار إعداد المدرسة</a> لاستخدام بياناتك الحقيقية (المسارات، المستويات، المعلمون).</div>`
+    :'';
+  $('#app').innerHTML = banner + (view==='dash' ? renderDashboard() : renderWizard());
+  window.scrollTo(0,0);
+}
+
+/* ============================================================
+   تصدير
+============================================================ */
+const App={
+  openWizard,cancelWizard:()=>{view='dash';render();},
+  pickYear,toggleGrade,selectAllGrades,goStep,nextStep,backStep,restartWiz,
+  changeSource,reapplyPrev,addSection,removeSection,gradeMax,setGlobal,applyMaxAll,
+  selectRow,pickTeacher,clearTeacher,setFilter,setSearch,renderTeachers,
+  toggleBulk,toggleAllBulk,setBulkTeacher,bulkAssign,toggleAllowNo,
+  editRow,doCreate,undoCreate,
+  setDashYear,dashTeacher,dashDelete,resetDemo,closeModal,
+  openAddSection,addSetGid,addSetLetter,addSetMax,addSetTeacher,doAddSection,closeAddSection,dashMax,repairOrphans
+};
+document.querySelector('.topbar .reset').textContent = MODE==='real' ? '↺ مسح بيانات الشعب' : '↺ إعادة تعيين بيانات النموذج';
+document.querySelector('.topbar .d').textContent = MODE==='real'
+  ? 'يعمل بالبيانات الحقيقية من مسار الإعداد — '+SCHOOL_NAME
+  : 'المعالج يعمل فعليًا · بيانات تجريبية · أكمل الإعداد من setup.html';
+render();
+</script>
+</body>
+</html>

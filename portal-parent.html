@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>بوابة ولي الأمر</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+const ME=getSession();
+if(!ME||ME.role!=='parent'){ location.href='portal.html'; }
+const ME_P=parentById(db,ME.id);
+const KIDS=studentsOfParent(db,ME.id);
+const YEAR=db.school.yearLabel;
+const S={tab:'rc',childId:KIDS.length?KIDS[0].id:null,rc:false,chatId:null,chatKid:null};
+const KID=()=>studentById(db,S.childId);
+const kidTeacher=(k)=>{ const sec=sectionByKey(db,k.sectionKey); return sec?teacherOfSection(db,sec):null; };
+const unreadN=()=>notificationsFor(db,ME.role,ME.id).filter(n=>!n.read).length;
+
+function render(){
+  if(!KIDS.length){
+    $('#app').innerHTML=`<div class="card" style="max-width:620px;margin:60px auto;text-align:center">
+      <div style="font-size:46px">👨‍</div><h2 style="font-size:19px;margin-top:10px">لا يوجد أبناء مسجَّلون بحسابك</h2>
+      <p class="hint" style="margin:10px 0 20px">اربط أبنائك من شاشة الطلاب أثناء التسجيل.</p>
+      <a class="btn primary" href="portal.html" style="text-decoration:none">← خروج</a></div>`;
+    return;
+  }
+  if(S.rc){ renderRC(); return; }
+  const k=KID();
+  const sec=sectionByKey(db,k.sectionKey);
+  const tabs=[['rc','📊 كشوف الأبناء',null],['grades','🎯 العلامات',null],['att','🗓️ الحضور',null],['notes','🗒️ ملاحظات الابن',null],['behav','⚖️ سلوك الابن',null],['plan','📅 الخطة الأسبوعية',null],['chat','💬 استفسار من المعلمين',unreadConvs(db,ME.role,ME.id).length||null]];
+  $('#app').innerHTML=`
+  <div class="topbar" style="position:static;border-radius:12px;margin-bottom:14px">
+    <span class="t">🏫 ${esc(db.school.name)}</span>
+    <span class="rolebadge">👨‍👦 ${esc(ME_P.name)}</span>
+    <button class="reset" onclick="Pv.showNotifs()">🔔 الإشعارات${unreadN()?` <b style="background:var(--bad);border-radius:99px;padding:1px 7px">(${unreadN()})</b>`:''}</button>
+    <a class="home" href="portal.html">← خروج</a>
+  </div>
+  <div class="pbar2">
+    <b>ابني:</b>
+    <div class="chips" style="gap:7px">
+      ${KIDS.map(x=>`<span class="chip sm ${x.id===S.childId?'sel':''}" onclick="Pv.setKid('${x.id}')">${esc(x.name)}${x.sectionKey?' · شعبة '+keyLetter(x.sectionKey):' · غير موزَّع'}</span>`).join('')}
+    </div>
+    <span class="hint" style="margin-inline-start:auto">${sec?levelName(db,sec.gradeId)+' / شعبة '+sec.letter:'غير موزَّع بعد'}</span>
+  </div>
+  <div class="tabs no-print">${tabs.map(([id,t,c])=>`<span class="tab ${S.tab===id?'on':''}" onclick="Pv.setTab('${id}')">${t}${c!=null?`<span class="cnt">${c}</span>`:''}</span>`).join('')}</div>
+  `+({rc:tabRC,grades:tabGrades,att:tabAtt,notes:tabNotes,behav:tabBehav,plan:tabPlan,chat:tabChat}[S.tab])();
+}
+
+function tabRC(){
+  const k=KID();
+  const rc=reportCardData(db,k.id);
+  return `
+  <div class="card" style="text-align:center;padding:26px">
+    <div style="font-size:40px">📊</div>
+    <b style="font-size:16px;display:block;margin-top:8px">كشف نتائج ${esc(k.name)}</b>
+    <p class="hint" style="margin:8px 0 16px">الكشف يربط نتائج الابن (علامات + حضور) ويعرضه لك هنا — قابل للطباعة أو الحفظ PDF.</p>
+    <button class="btn primary" onclick="Pv.openRc()">فتح كشف ${esc(k.name)} ←</button>
+  </div>`;
+}
+function renderRC(){
+  const k=KID();
+  const rc=reportCardData(db,k.id);
+  if(!rc){ S.rc=false; render(); return; }
+  const sec=rc.section, t=sec?teacherOfSection(db,sec):null;
+  $('#app').innerHTML=`
+  <div class="topbar" style="position:static;border-radius:12px;margin-bottom:14px">
+    <span class="t">📊 كشف نتائج ${esc(k.name)}</span>
+    <button class="reset no-print" onclick="Pv.closeRc()">← رجوع</button>
+  </div>
+  <div class="rc">
+    <div class="rc-head">
+      <div><b>🏫 ${esc(db.school.name)}</b><br/><span style="font-size:12.5px;opacity:.85">كشف نتائج — ${YEAR}</span></div>
+      <button class="btn primary no-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+    </div>
+    <div class="rc-body">
+      <div class="rc-grid">
+        <div class="rc-cell">الطالب<b>${esc(k.name)}</b></div>
+        <div class="rc-cell">الصف / الشعبة<b>${sec?levelName(db,sec.gradeId)+' / شعبة '+sec.letter:'—'}</b></div>
+        <div class="rc-cell">مربّي الصف<b>${t?t.name:'—'}</b></div>
+        <div class="rc-cell">وليّ الأمر<b>${esc(ME_P.name)}</b></div>
+        <div class="rc-cell">النتيجة العامة<b style="color:${rc.overall!=null&&rc.overall>=50?'#059669':'#DC2626'}">${rc.overall!=null?rc.overall+'%':'—'}</b></div>
+        <div class="rc-cell">النقاط السلوكية<b>سلبي ${rc.behavior.neg} / إيجابي +${rc.behavior.pos}</b></div>
+        <div class="rc-cell">الوضع السلوكي<b>${rc.behavior.stage?('⚠️ '+rc.behavior.stageName):'✅ سليم'}${rc.behavior.level?' · 🏆 '+rc.behavior.levelName:''}</div>
+      </div>
+      <table class="tbl">
+        <tr><th>المادة</th><th>المقيَّم</th><th>النسبة</th></tr>
+        ${rc.per.map(r=>`<tr><td>${esc(r.subject)}</td><td>${r.n}</td><td><b style="color:${r.avg>=50?'#059669':'#DC2626'}">${r.avg}%</b></td></tr>`).join('')
+        ||'<tr><td colspan="3" style="color:var(--faint)">لا علامات مقيَّمة بعد</td></tr>'}
+      </table>
+      <div class="rc-grid" style="margin-top:14px">
+        <div class="rc-cell">حاضر<b style="color:#059669">${rc.att.present}</b></div>
+        <div class="rc-cell">غائب<b style="color:#DC2626">${rc.att.absent}</b></div>
+        <div class="rc-cell">متأخر<b style="color:#B45309">${rc.att.late}</b></div>
+        <div class="rc-cell">بعذر<b style="color:#1E40AF">${rc.att.excused}</b></div>
+      </div>
+    </div>
+    <div class="rc-foot"><span>توقيع المعلم: ........................</span><span>توقيع وليّ الأمر: ........................</span><span>${todayStr()}</span></div>
+  </div>`;
+}
+
+function tabGrades(){
+  const k=KID();
+  const gs=gradesOfStudent(db,k.id);
+  return gs.length?`
+  <div class="card" style="padding:6px 14px">
+    ${gs.map(g=>`
+    <div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap;font-size:13.5px">
+      <span class="stchip info">${esc(g.subject)}</span>
+      <b style="flex:1;min-width:160px">${esc(g.title)}</b>
+      <span class="stchip ${g.type==='assessment'?'warn':'gray'}">${g.type==='assessment'?'اختبار':'مهمة'}</span>
+      <b style="color:${g.score/g.max>=0.5?'#059669':'#DC2626'};font-size:15px">${g.score}/${g.max}</b>
+      ${g.feedback?`<span style="color:var(--mut);font-size:12.5px">💬 ${esc(g.feedback)}</span>`:''}
+    </div>`).join('')}
+  </div>`
+  :`<div class="empty" style="margin-top:10px"><div class="ic">🎯</div><b>لا علامات بعد</b><p>تظهر نتائج ${esc(k.name)} هنا فور تقييم معلميه.</p></div>`;
+}
+
+function tabAtt(){
+  const k=KID();
+  const sum=attendanceSummary(db,k.id);
+  const recs=recentAttendance(db,k.id,10);
+  return `
+  <div class="pbar2" style="justify-content:center">
+    <span class="stchip ok" style="font-size:13px">حاضر: ${sum.present}</span>
+    <span class="stchip bad" style="font-size:13px">غائب: ${sum.absent}</span>
+    <span class="stchip warn" style="font-size:13px">متأخر: ${sum.late}</span>
+    <span class="stchip info" style="font-size:13px">بعذر: ${sum.excused}</span>
+  </div>
+  <div class="card">
+    <div class="card-h">آخر السجلات — ${esc(k.name)}</div>
+    ${recs.map(r=>`<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13.5px;font-weight:700">
+      <b style="min-width:105px">${r.date}</b>
+      <span class="stchip ${ATT_META[r.status].cls}">${ATT_META[r.status].t}</span>
+      ${r.excuseType?`<span style="color:var(--mut)">(العذر: ${esc(r.excuseType)})</span>`:''}
+      ${r.notified?'<span class="stchip gray" style="margin-inline-start:auto">تم إشعارك</span>':''}
+    </div>`).join('')||'<div class="hint">لا سجلات حضور بعد.</div>'}
+  </div>
+  <div class="tip" style="margin-top:12px">📣 عند «الغياب بعذر» يُرسل لك إشعار هنا وفي جرس الإشعارات (صلاحيات الإعلام: مربّي الصف / إدارة المدرسة).</div>`;
+}
+
+function tabNotes(){
+  const k=KID();
+  const ns=notesOfStudent(db,k.id);
+  return `
+  <div class="card">
+    <div class="card-h">الملاحظات الأكاديمية والسلوكية — ${esc(k.name)}</div>
+    ${ns.length?ns.map(n=>{
+      const t=teacherById(db,n.teacherId);
+      return `
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)">
+        <span class="stchip ${NOTE_KINDS[n.kind]?NOTE_KINDS[n.kind].cls:'gray'}">${NOTE_KINDS[n.kind]?NOTE_KINDS[n.kind].ic:''} ${NOTE_KINDS[n.kind]?NOTE_KINDS[n.kind].t:'ملاحظة'}</span>
+        <div style="flex:1">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+            <span class="stchip info">${esc(n.subject)}</span>
+            <span class="hint">${t?esc(t.name):'معلم'} · ${n.at}</span>
+          </div>
+          <b style="font-size:13.5px">${esc(n.text)}</b>
+        </div>
+      </div>`;
+    }).join(''):'<div class="hint">لا ملاحظات على '+esc(k.name)+' بعد — تظهر هنا فور تسجيل معلميه لها.</div>'}
+  </div>
+  <div class="tip" style="margin-top:12px">📝 يوثّق المعلمون ملاحظات أكاديمية وسلوكية عن ${esc(k.name)}، وتصلك أنت وكل ملاحظة في جرس الإشعارات. للاستفسار المباشر استخدم تبويب «استفسار من المعلمين».</div>`;
+}
+
+function tabBehav(){
+  const k=KID();
+  const info=studentBehavior(db,k.id);
+  const recs=(db.behaviorRecords||[]).filter(r=>r.studentId===k.id).sort((a,b)=>b.at.localeCompare(a.at));
+  const bar=(cur,target,good)=>{
+    const p=target?Math.min(100,Math.round(cur/target*100)):100;
+    return `<div style="flex:1;min-width:150px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;margin-bottom:4px">
+        <span style="color:${good?'#059669':'#DC2626'}">${good?'+':'−'}${Math.abs(cur)} نقطة</span>
+        <span class="hint">${target?('الحد التالي: '+(good?'+':'−')+target):'وصل للحد الأقصى'}</span>
+      </div>
+      <div style="height:8px;background:#E5E7EB;border-radius:99px;overflow:hidden"><div style="height:100%;width:${p}%;background:${good?'var(--ok)':'var(--bad)'};border-radius:99px"></div></div>
+    </div>`;
+  };
+  return `
+  <div class="card">
+    <div class="card-h">📈 النقاط السلوكية — ${esc(k.name)}</div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap">
+      ${bar(info.negAbs,info.nextNeg,false)}
+      ${bar(info.pos,info.nextPos,true)}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <span class="stchip ${STAGE_META[info.stage]?STAGE_META[info.stage].cls:'ok'}">${info.stage?('⚠️ المرحلة: '+info.stageName):'✅ سلوك سليم'}</span>
+      <span class="stchip ${info.level?'info':'gray'}">${info.level?('🏆 '+info.levelName):'لا مستوى إيجابي بعد'}</span>
+    </div>
+    ${info.awards.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+      ${info.awards.map(aw=>`<span class="stchip ok">🏆 ${aw.name} — ${esc(aw.reward)} (${aw.at})</span>`).join('')}
+    </div>`:''}
+  </div>
+  ${info.incidents.length?`
+  <div class="card" style="margin-top:12px;background:var(--warnbg);border-color:var(--warnline)">
+    <div class="card-h" style="color:#92400E">⚠️ حالات المتابعة السلوكية (${info.incidents.filter(x=>x.status==='open').length} مفتوحة)</div>
+    ${info.incidents.map(inc=>`
+    <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--warnline);flex-wrap:wrap">
+      <span class="stchip ${STAGE_META[inc.stage].cls}">${STAGE_META[inc.stage].t}</span>
+      <div style="flex:1;min-width:220px"><b>${inc.at}</b>
+        <div class="hint">الإجراء: ${esc(inc.action)}${inc.followUp?' · المتابعة: '+esc(inc.followUp):''}</div></div>
+      ${inc.status==='open'?'<span class="stchip warn">قيد المتابعة</span>':'<span class="stchip ok">✓ أُغلقت</span>'}
+    </div>`).join('')}
+    <p class="hint" style="margin-top:8px">تتابع الإدارة والمرشد التربوي هذه الحالات — ولقاء أو اجتماع يُحدد عبر المدرسة.</p>
+  </div>`:''}
+  <div class="card" style="margin-top:12px">
+    <div class="card-h">📊 نقاط ${esc(k.name)} حسب التصنيف</div>
+    ${info.byCategory.length?`
+    <table class="tbl">
+      <tr><th>التصنيف</th><th>سجلات</th><th>سلبي</th><th>إيجابي</th></tr>
+      ${info.byCategory.map(c=>`<tr><td>${esc(c.category)}</td><td>${c.count}</td>
+        <td style="color:${c.neg<0?'#DC2626':'var(--faint)'};font-weight:800">${c.neg<0?c.neg:'—'}</td>
+        <td style="color:${c.pos>0?'#059669':'var(--faint)'};font-weight:800">${c.pos>0?'+'+c.pos:'—'}</td></tr>`).join('')}
+      <tr><td><b>الإجمالي</b></td><td>${info.records}</td><td style="color:#DC2626;font-weight:800">${info.neg}</td><td style="color:#059669;font-weight:800">+${info.pos}</td></tr>
+    </table>`:'<div class="hint">لا سجلات بعد.</div>'}
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="card-h">🕘 سجل سلوك ${esc(k.name)} (${recs.length})</div>
+    ${recs.map(r=>{
+      const t=teacherById(db,r.teacherId);
+      return `<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line)">
+        <span class="stchip ${r.kind==='negative'?'bad':'ok'}" style="min-width:44px;text-align:center">${r.kind==='negative'?'-'+r.points:'+'+r.points}</span>
+        <div style="flex:1"><b style="font-size:13px">${esc(r.behaviorName)}</b> <span class="stchip gray">${esc(r.category)}</span>
+          <div class="hint">${t?esc(t.name):'—'} · ${r.at}${r.note?' · '+esc(r.note):''}</div></div>
+        ${r.notifiedParent?'<span class="stchip gray">📨 أُرسل لك</span>':''}
+      </div>`;
+    }).join('')||'<div class="hint">لا سجلات بعد.</div>'}
+  </div>`;
+}
+
+function tabPlan(){
+  const k=KID();
+  const plans=k.sectionKey?plansOfSection(db,k.sectionKey):[];
+  return plans.length?`
+  <div class="hint" style="margin-bottom:10px">خطط الأسابيع التي ينشرها معلمو شعبة ${esc(k.name)} (الأحدث أولًا) — اضغط على الملف لتحميله.</div>
+  ${plans.map(pl=>{
+    const t=teacherById(db,pl.teacherId);
+    return `
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span class="stchip info" style="min-width:150px;text-align:center">${esc(pl.weekLabel)}</span>
+        <span class="stchip gray">${esc(pl.subject)}</span>
+        <span class="hint" style="margin-inline-start:auto">${t?esc(t.name):'—'} · ${pl.at}</span>
+      </div>
+      ${pl.text?`<div style="margin-top:9px;font-size:13.5px;font-weight:600;line-height:1.7">${esc(pl.text)}</div>`:''}
+      ${pl.fileName?`<div style="margin-top:9px">${fileLinkHtml(pl.fileName,pl.fileData)}</div>`:''}
+    </div>`;
+  }).join('')}`:'<div class="empty"><div class="ic">📅</div><b>لم تُنشر خطط أسبوعية لشعبة '+esc(k.name)+' بعد</b><p>عندما ينشر المعلمون خطة أسبوعية ستجدها هنا مع إشعار فوري.</p></div>';
+}
+
+function tabChat(){
+  const k=KID();
+  const t=kidTeacher(k);
+  const convs=conversationsOf(db,ME.role,ME.id);
+  const sel=convs.find(c=>c.id===S.chatId)||convs[0];
+  const other=c=>(c.a.role===ME.role&&c.a.id===ME.id)?c.b:c.a;
+  const listHtml=convs.map(c=>{ const o=other(c); const l=lastMsg(c); const unread=l&&(l.from.role!==ME.role||l.from.id!==ME.id);
+    return `<div class="convl ${sel&&c.id===sel.id?'on':''}" onclick="Pv.openChat('${c.id}')">
+      <b>${esc(displayName(db,o))}</b><span class="stchip gray" style="margin-inline-start:6px">معلم</span>${unread?'<span class="dot"></span>':''}
+      <div class="last">${l?esc(l.text):'— لا رسائل بعد —'}</div></div>`;
+  }).join('');
+  const msgsHtml=sel?sel.messages.map(m=>{ const mine=m.from.role===ME.role&&m.from.id===ME.id;
+    return `<div class="msg ${mine?'me':'them'}">${esc(m.text)}<span class="mt">${mine?'أنت':esc(displayName(db,m.from))} · ${m.at}</span></div>`;
+  }).join(''):'<div class="hint" style="text-align:center;padding:30px 0">اختر محادثة أو ابدأ استفسارًا جديدًا</div>';
+  return `
+  <div class="chatwrap">
+    <aside class="card" style="margin-bottom:0">
+      <div class="card-h">استفساراتي
+        ${t?`<button class="btn tiny outline-p" style="margin-top:6px" onclick="Pv.newChat()">＋ استفسار لمربي ${esc(k.name)} (${esc(t.name)})</button>`
+            :'<div class="hint" style="margin-top:6px">ابنك غير موزَّع بعد — لا معلم يمكن استفساره.</div>'}
+      </div>
+      ${listHtml||'<div class="hint">لا استفسارات بعد.</div>'}
+    </aside>
+    <div class="card" style="margin-bottom:0">
+      ${sel?`<div class="card-h">${esc(displayName(db,other(sel)))} <span class="stchip gray" style="margin-inline-start:8px">استفسار/متابعة</span></div>
+      <div class="msgs" id="msgs">${msgsHtml}</div>
+      <div class="chatinput">
+        <input id="chatbox" type="text" placeholder="اكتب استفسارك أو متابعة موضوع يتعلق بابنك…" onkeydown="if(event.key==='Enter')Pv.sendMsg()"/>
+        <button class="btn primary" onclick="Pv.sendMsg()">إرسال</button>
+      </div>`
+      :'<div class="hint" style="padding:40px 0;text-align:center">اختر محادثة من القائمة</div>'}
+    </div>
+  </div>`;
+}
+
+const Pv={
+  setKid(id){ S.childId=id; S.rc=false; S.chatId=null; render(); },
+  setTab(t){ S.tab=t; S.rc=false; render(); },
+  openRc(){ S.rc=true; render(); },
+  closeRc(){ S.rc=false; render(); },
+  openChat(id){ S.chatId=id; render(); },
+  newChat(){
+    const k=KID(); const t=kidTeacher(k); if(!t) return;
+    const c=startConversation(db,{role:'parent',id:ME.id},{role:'teacher',id:t.id});
+    S.chatId=c.id; S.tab='chat'; render();
+    toast('بدأت استفسارًا جديدًا مع '+t.name);
+  },
+  sendMsg(){
+    const el=document.getElementById('chatbox');
+    if(!el||!el.value.trim()) return;
+    const k=KID(); const t=kidTeacher(k); if(!t) return;
+    const c=startConversation(db,{role:'parent',id:ME.id},{role:'teacher',id:t.id});
+    addMessage(db,c.id,{role:'parent',id:ME.id},el.value.trim());
+    S.chatId=c.id; render();
+    const m=document.getElementById('msgs'); if(m)m.scrollTop=m.scrollHeight;
+  },
+  showNotifs(){
+    const ns=notificationsFor(db,ME.role,ME.id).sort((a,b)=>b.at.localeCompare(a.at));
+    $('#modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)Pv.closeModal()">
+      <div class="modal"><h3>🔔 إشعاراتي (${ns.length})</h3>
+      ${ns.map(n=>`<div class="notif ${n.read?'':'unread'}">${esc(n.text)}<span class="t">${n.at}${n.read?'':' · جديد'}</span></div>`).join('')||'<div class="hint">لا إشعارات</div>'}
+      <div class="row" style="margin-top:14px">
+        <button class="btn ghost" onclick="Pv.closeModal()">إغلاق</button>
+        <button class="btn outline-p" onclick="Pv.markRead()">تعليم الكل كقراءة</button>
+      </div></div></div>`;
+  },
+  markRead(){ markNotifsRead(db,ME.role,ME.id); Pv.showNotifs(); render(); },
+  closeModal(){ $('#modal-root').innerHTML=''; }
+};
+render();
+</script>
+</body>
+</html>

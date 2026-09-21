@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>تعيينات التدريس — معلم لكل مادة في كل شعبة</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<div class="topbar">
+  <a class="home" href="setup.html">→ المسار المؤهل</a>
+  <span class="t">📋 تعيينات التدريس</span>
+  <span class="d">الخطوة 9 من 9 — معلم لكل مادة في كل شعبة (المربي + معلمو المواد)</span>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+let year=db.school?db.school.yearLabel:null;
+let onlyMissing=false;
+
+const yearsHaveSec=()=>Object.keys(db.sectionsByYear||{}).filter(y=>(db.sectionsByYear[y]||[]).length);
+function guard(){
+  if(!db.school){
+    $('#app').innerHTML=`<div class="card" style="max-width:620px;margin:50px auto;text-align:center">
+      <div style="font-size:46px">🔒</div><h2 style="font-size:19px;margin-top:10px">ابدأ من بيانات المدرسة</h2>
+      <p class="hint" style="margin:10px 0 20px">تعيينات التدريس تُبنى فوق بنية المدرسة والشعب.</p>
+      <a class="btn primary" href="wiz-school.html" style="text-decoration:none">← بدء من بيانات المدرسة</a></div>`;
+    throw new Error('guard');
+  }
+  if(!yearsHaveSec().length){
+    $('#app').innerHTML=`<div class="card" style="max-width:620px;margin:50px auto;text-align:center">
+      <div style="font-size:46px">🏗️</div><h2 style="font-size:19px;margin-top:10px">لا شعب بعد</h2>
+      <p class="hint" style="margin:10px 0 20px">أنشئ شعب العام الحالي أولًا (مع مربّي الصف) ثم عُد هنا لتعيين معلم لكل مادة.</p>
+      <a class="btn primary" href="index.html" style="text-decoration:none">→ إنشاء الصفوف والشعب</a></div>`;
+    throw new Error('guard');
+  }
+  if(!(db.teachers||[]).length){
+    $('#app').innerHTML=`<div class="card" style="max-width:620px;margin:50px auto;text-align:center">
+      <div style="font-size:46px">👥</div><h2 style="font-size:19px;margin-top:10px">لا معلمون مسجَّلون</h2>
+      <p class="hint" style="margin:10px 0 20px">أضف المعلمين وتخصصاتهم أولًا.</p>
+      <a class="btn primary" href="wiz-teachers.html" style="text-decoration:none">→ إضافة المعلمين</a></div>`;
+    throw new Error('guard');
+  }
+}
+function render(){
+  guard();
+  const ys=yearsHaveSec();
+  if(!ys.includes(year))year=ys.includes(db.school.yearLabel)?db.school.yearLabel:ys[0];
+  const secs=db.sectionsByYear[year];
+  const st=teachPlanStats(db,year);
+  const pct=st.total?Math.round(st.done/st.total*100):0;
+  const complete=st.total>0&&st.done===st.total;
+
+  /* معلمو كل مادة (فلترة حسب تخصص المادة) */
+  const teachersFor=sub=>(db.teachers||[]).slice().sort((a,b)=>{
+    const am=a.subject===sub?0:1, bm=b.subject===sub?0:1;
+    return am-bm||a.name.localeCompare(b.name,'ar');
+  });
+
+  const cards=secs.map(sec=>{
+    const k=sectionKey(sec);
+    const map=teachPlanOf(db,k);
+    const subs=sectionSubjects(db,sec);
+    const done=subs.filter(s=>map[s]&&(db.teachers||[]).some(t=>t.id===map[s])).length;
+    const secComplete=subs.length>0&&done===subs.length;
+    const homeroom=teacherOfSection(db,sec);
+    const missing=subs.filter(s=>!(map[s]&&(db.teachers||[]).some(t=>t.id===map[s])));
+    if(onlyMissing&&!missing.length)return '';
+    return `
+    <div class="card">
+      <div class="card-h" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <b>${levelName(db,sec.gradeId)} / شعبة ${sec.letter}</b>
+        <span class="stchip ${homeroom?'info':'gray'}">👤 مربّي الصف: ${homeroom?esc(homeroom.name):'لم يُعيَّن'}</span>
+        <span class="stchip ${secComplete?'ok':'warn'}">${secComplete?'✓ مكتملة':`ناقص ${missing.length} مادة (${done}/${subs.length})`}</span>
+        <button class="btn tiny outline-p" style="margin-inline-start:auto" onclick="T.autoOne('${k}')">⚡ تعيين تلقائي لهذه الشعبة</button>
+      </div>
+      <div style="margin-top:8px">
+        ${subs.map(sub=>{
+          const tid=map[sub]||'';
+          const t=tid?teacherById(db,tid):null;
+          return `
+          <div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+            <b style="flex:1;min-width:150px;font-size:13.5px">${esc(sub)}</b>
+            <select class="inline" style="min-width:230px;flex:2" onchange="T.setSel('${k}','${esc(sub)}',this.value)">
+              <option value="">— لم يُعيَّن —</option>
+              ${teachersFor(sub).map(x=>`<option value="${x.id}" ${x.id===tid?'selected':''}>${esc(x.name)}${x.subject===sub?' ✓ تخصصه':` (${esc(x.subject||'—')})`}</option>`).join('')}
+            </select>
+            <span class="stchip ${t?'gray':'bad'}" style="min-width:110px;text-align:center">${t?`${teacherLoad(db,t.id)} مادة/شعبة`:'⚠ بلا معلم'}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  const missingHtml=st.missing.length?`
+    <div style="background:var(--warnbg);border:1.5px solid var(--warnline);border-radius:14px;padding:14px 18px">
+      <div style="font-size:14px;font-weight:800;color:#92400E;margin-bottom:6px">⚠️ ${st.missing.length} خلية بلا معلم (في هذا العام):</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${st.missing.slice(0,18).map(m=>{
+          const s=sectionByKey(db,m.sectionKey);
+          return `<span class="stchip warn">${s?levelName(db,s.gradeId)+' '+s.letter:'?'} · ${esc(m.subject)}</span>`;
+        }).join('')}
+        ${st.missing.length>18?`<span class="stchip gray">+ ${st.missing.length-18} أخرى</span>`:''}
+      </div>
+      <p class="hint" style="margin-top:8px">أضف معلمًا متخصصًا من <a href="wiz-teachers.html" style="color:var(--p);font-weight:800">شاشة المعلمين</a> ثم استخدم «تعيين تلقائي».</p>
+    </div>`:'';
+
+  $('#app').innerHTML=`${appbar(db.school.name,'/ الإعداد / تعيينات التدريس')}
+  <div class="wizhead">
+    <div>
+      <div class="wiztitle">📋 تعيين معلم لكل مادة في كل شعبة</div>
+      <div class="wizsub">من هنا يُحدَّد من يدرّس كل مادة في كل شعبة — ومنه تُبنى «صفوفي» المعلم في البوابة. مربّي الصف يملك أيضًا صلاحيات أي مادة في صفّه.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:end">
+      <div class="pbar" style="width:220px"><i style="width:${pct}%"></i></div>
+      <b style="font-size:13px">${st.done}/${st.total} خلية معيَّنة (${pct}%)</b>
+    </div>
+  </div>
+  <div class="pbar2" style="margin-bottom:14px">
+    <b>العام:</b>
+    <select class="inline" onchange="T.setYear(this.value)">
+      ${ys.map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('')}
+    </select>
+    <label style="display:flex;gap:6px;align-items:center;font-weight:800;font-size:13px;cursor:pointer">
+      <input type="checkbox" ${onlyMissing?'checked':''} onchange="T.toggleMissing(this.checked)"> إظهار الناقص فقط
+    </label>
+    <span class="stchip ${complete?'ok':'warn'}" style="margin-inline-start:auto">${complete?'✓ اكتملت تعيينات هذا العام':'بانتظار إكمال النواقص'}</span>
+    <button class="btn primary" onclick="T.autoAll()">⚡ تعيين تلقائي (كل شعب هذا العام)</button>
+  </div>
+  <p class="hint" style="margin-bottom:12px">💡 التعيين التلقائي يطابق <b>تخصص المعلم</b> مع المادة، ويوزّع الأعباء بين المعلمين المتخصصين بنفس المادة، ولا يعيد تعيين ما أُسند يدويًا. يمكنك التعديل اليدوي في أي وقت.</p>
+  ${cards||'<div class="empty"><div class="ic">👌</div><b>لا نواقص</b><p>كل الشعب مكتملة التعيين (أو فلترت على الناقص فقط).</p></div>'}
+  ${st.missing.length&&onlyMissing?'':missingHtml}
+  <div class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+    <div style="flex:1;min-width:260px">
+      <b> بعد اكتمال التعيينات</b>
+      <p class="hint" style="margin-top:4px">يدخل المعلم البوابة فيجد «صفوفي»: مربع لكل (مادة × شعبة) يدرّسها — يضغط المربع فينشر مهامًا واختبارات ويسجّل ملاحظات أكاديمية وسلوكية لطلاب شعبته فقط.</p>
+    </div>
+    <a class="btn ${complete?'primary':'ghost'}" href="portal.html" style="text-decoration:none">🚪 جرّب البوابة بدور معلم</a>
+  </div>`;
+}
+
+const T={
+  setYear(y){ year=y; render(); },
+  toggleMissing(v){ onlyMissing=!!v; render(); },
+  autoOne(k){
+    const sec=sectionByKey(db,k);
+    const n=autoAssignSection(db,sec);
+    render();
+    toast(n?`⚡ عيّن تلقائيًا ${n} مادة في ${levelName(db,sec.gradeId)} شعبة ${sec.letter}`:'الشعبة مكتملة التعيين أصلًا',{type:n?'ok':'warn'});
+  },
+  autoAll(){
+    let n=0;
+    db.sectionsByYear[year].forEach(s=>{n+=autoAssignSection(db,s);});
+    render();
+    toast(n?`⚡ عيّن تلقائيًا ${n} خلية في هذا العام`:'كل الخلايا معيَّنة أصلًا',{type:n?'ok':'warn'});
+  },
+  setSel(k,sub,tid){
+    setTeachPlan(db,k,sub,tid||null);
+    render();
+    if(tid)toast(`✓ ${sub} في هذه الشعبة ← ${teacherById(db,tid).name}`,{type:'ok'});
+  }
+};
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>المواد الدراسية لكل مسار</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<div class="topbar">
+  <a class="home" href="setup.html">→ المسار المؤهل</a>
+  <span class="t">📚 المواد الدراسية</span>
+  <span class="d">الخطوة 3 من 5 — مواد كل مسار</span>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+if(!db.school){
+  $('#app').innerHTML=`
+  <div class="card" style="max-width:620px;margin:50px auto;text-align:center">
+    <div style="font-size:46px">🔒</div>
+    <h2 style="font-size:19px;margin-top:10px">لم تُحدَّد المسارات بعد</h2>
+    <p class="hint" style="margin:10px 0 20px">المواد تُعرّف لكل مسار على حدة — ابدأ من «بيانات المدرسة» أولًا.</p>
+    <a class="btn primary" href="wiz-school.html" style="text-decoration:none">← بدء من بيانات المدرسة</a>
+  </div>`;
+  throw new Error('guard');
+}
+const pids=db.school.paths;
+let selPath=pids[0];
+let adding=false;
+
+function subsOf(pid){ if(!db.subjects[pid]) db.subjects[pid]=[]; return db.subjects[pid]; }
+function persist(){saveDB(db);render();}
+
+function applyPreset(){
+  askConfirm('اعتماد قوالب مواد المسار','سيستبدل القالب قائمة المواد الحالية لـ«'+PATHS_META[selPath].name+'».',()=>{
+    db.subjects[selPath]=[...SUBJECT_PRESETS[selPath]];
+    persist();toast('تم اعتماد القالب: '+SUBJECT_PRESETS[selPath].length+' مادة',{type:'ok'});
+  },'اعتماد',true);
+}
+function addSubject(name){
+  name=(name||'').trim();
+  if(!name){toast('اكتب اسم المادة أولًا',{type:'warn'});return;}
+  if(subsOf(selPath).includes(name)){toast('المادة موجودة مسبقًا',{type:'warn'});return;}
+  subsOf(selPath).push(name);
+  adding=false;persist();
+}
+function removeSubject(i){subsOf(selPath).splice(i,1);persist();}
+
+function render(){
+  const subs=subsOf(selPath);
+  const counts=pids.map(p=>`${PATHS_META[p].flag} ${(db.subjects[p]||[]).length}`).join(' · ');
+  $('#app').innerHTML=`${appbar(db.school.name,'/ الإعداد / المواد الدراسية')}
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">المواد الدراسية لكل مسار</div>
+        <div class="wizsub">التحفظ تلقائي عند كل تغيير · ${counts} مادة</div>
+      </div>
+      <div class="chips">
+        ${pids.map(p=>`<span class="chip ${p===selPath?'sel':''}" onclick="selPath='${p}';render()">${PATHS_META[p].flag} ${PATHS_META[p].name} (${(db.subjects[p]||[]).length})</span>`).join('')}
+      </div>
+    </div>
+    <div class="wizbody">
+      <div class="card">
+        <div class="card-h">مواد «${PATHS_META[selPath].name}» <span class="sg-count">${subs.length} مادة</span></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <button class="btn outline-p" onclick="applyPreset()">📋 اعتماد قوالب ${PATHS_META[selPath].name}</button>
+        </div>
+        <div class="chips">
+          ${subs.map((s,i)=>`<span class="chip sec">${esc(s)} <span class="x" onclick="removeSubject(${i})">✕</span></span>`).join('')||'<span class="hint" style="margin:0">لا مواد بعد — اعتمد القالب أو أضف يدويًا.</span>'}
+        </div>
+        <div class="inline-row">
+          ${adding
+            ?`<input type="text" id="newsub" placeholder="اسم المادة الجديدة" onkeydown="if(event.key==='Enter')addSubject(document.getElementById('newsub').value)">
+              <button class="btn tiny primary" onclick="addSubject(document.getElementById('newsub').value)">إضافة</button>`
+            :`<button class="btn outline-p" onclick="adding=true;render()">＋ إضافة مادة مخصصة</button>`}
+        </div>
+      </div>
+    </div>
+    <div class="wizfoot">
+      <a class="btn ghost" href="wiz-stages.html" style="text-decoration:none">→ المستويات</a>
+      <div class="footnote">المواد تُستخدم في شاشة المعلمين (التخصصات)</div>
+      <a class="btn primary" href="wiz-teachers.html" style="text-decoration:none">التالي: المعلمون ←</a>
+    </div>`;
+}
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>بيانات أولياء الأمور</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<div class="topbar">
+  <a class="home" href="setup.html">→ المسار المؤهل</a>
+  <span class="t">👨‍👩‍ أولياء الأمور</span>
+  <span class="d">الخطوة 6 من 8 — وليّ أمر واحد يمكن أن يكون لعدة أبناء</span>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+if(!db.school){
+  $('#app').innerHTML=`
+  <div class="card" style="max-width:620px;margin:50px auto;text-align:center">
+    <div style="font-size:46px">🔒</div>
+    <h2 style="font-size:19px;margin-top:10px">لم تُنشأ المدرسة بعد</h2>
+    <p class="hint" style="margin:10px 0 20px">ابدأ أولًا من «بيانات المدرسة».</p>
+    <a class="btn primary" href="wiz-school.html" style="text-decoration:none">← بدء من بيانات المدرسة</a>
+  </div>`;
+  throw new Error('guard');
+}
+if(!db.parents)db.parents=[];
+const LS_P='wiz-parents-v1';
+let WizForm,editingId;
+function defaultForm(){return{name:'',phone:'',gender:'ذكر'};}
+try{
+  const f=JSON.parse(store.get(LS_P));
+  WizForm=f&&f.form?f.form:defaultForm();
+  editingId=f&&f.editingId?f.editingId:null;
+  if(editingId&&!db.parents.find(p=>p.id===editingId))editingId=null;
+}catch(e){WizForm=defaultForm();editingId=null;}
+function saveF(){store.set(LS_P,JSON.stringify({WizForm:WizForm,editingId}));}
+function setF(k,v){WizForm[k]=v;saveF();render();}
+
+function submit(){
+  const name=WizForm.name.trim();
+  if(!name){toast('اسم وليّ الأمر مطلوب',{type:'warn'});return;}
+  if(editingId){
+    const p=db.parents.find(p=>p.id===editingId);
+    Object.assign(p,{name,phone:WizForm.phone.trim(),gender:WizForm.gender});
+    toast('تم التحديث',{type:'ok'});
+  }else{
+    db.parents.push({id:'par'+Date.now().toString(36),name,phone:WizForm.phone.trim(),gender:WizForm.gender});
+    toast('تمت إضافة '+name,{type:'ok'});
+  }
+  editingId=null;WizForm=defaultForm();
+  saveDB(db);saveF();render();
+}
+function startEdit(id){
+  const p=db.parents.find(p=>p.id===id);
+  WizForm={name:p.name,phone:p.phone,gender:p.gender};editingId=id;saveF();render();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelEdit(){editingId=null;WizForm=defaultForm();saveF();render();}
+function delParent(id){
+  const p=db.parents.find(p=>p.id===id);
+  const kids=studentsOfParent(db,id);
+  askConfirm('حذف وليّ الأمر',`سيتم حذف «${p.name}»${kids.length?` — ${kids.length} من أبنائه سيصبحون «بدون وليّ أمر» (يمكن ربطهم لاحقًا)`:''}.`,()=>{
+    db.parents=db.parents.filter(x=>x.id!==id);
+    (db.students||[]).forEach(s=>{if(s.parentId===id)s.parentId=null;});
+    if(editingId===id){editingId=null;WizForm=defaultForm();}
+    saveDB(db);saveF();render();toast('تم الحذف');
+  },'حذف',true);
+}
+function addSample(){
+  const exist=new Set(db.parents.map(p=>p.name));
+  const sample=['ماجد الرواجيح','سلمى الحديدي','نايف الفياض','غادة السحيمات','رائد بني هاني','وفاء العموش'];
+  let n=0;
+  sample.forEach((nm,i)=>{if(!exist.has(nm)){db.parents.push({id:'par'+Date.now().toString(36)+'_'+i,name:nm,phone:'07'+String(91000000+i*113).slice(0,8),gender:i%2?'أنثى':'ذكر'});n++;}});
+  if(!n){toast('جميع العائلات التجريبية موجودة مسبقًا');return;}
+  saveDB(db);render();toast('تمت إضافة '+n+' من أولياء الأمور',{type:'ok'});
+}
+
+let q='';
+function pName(id){const p=db.parents.find(p=>p.id===id);return p?p.name:'— بدون —';}
+
+function render(){
+  const list=db.parents.filter(p=>{
+    const qq=q.trim();
+    return !qq||p.name.includes(qq)||(p.phone||'').includes(qq);
+  });
+  $('#app').innerHTML=`${appbar(db.school.name,'/ الإعداد / أولياء الأمور')}
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">بيانات أولياء الأمور</div>
+        <div class="wizsub">${db.parents.length} وليّ أمر · ${(db.students||[]).length} طالبًا مسجلًا</div>
+      </div>
+    </div>
+    <div class="wizbody">
+      <div class="two" style="display:grid;grid-template-columns:360px 1fr;gap:14px">
+        <div class="card" style="align-self:start">
+          <div class="card-h">${editingId?'تعديل وليّ أمر':'إضافة وليّ أمر'} ${editingId?'<span class="warnbox" style="margin:0;padding:3px 12px;font-size:12px">وضع التعديل</span>':''}</div>
+          <div class="field" style="margin-bottom:12px">
+            <label>الاسم الكامل <span style="color:var(--bad)">*</span></label>
+            <input type="text" value="${esc(WizForm.name)}" placeholder="مثال: محمد العبادي" oninput="WizForm.name=this.value;saveF();"/>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>الهاتف</label>
+            <input type="text" value="${esc(WizForm.phone)}" placeholder="079 000 0000" oninput="WizForm.phone=this.value;saveF();"/>
+          </div>
+          <div class="field" style="margin-bottom:16px">
+            <label>النوع</label>
+            <div class="chips">
+              <span class="chip ${WizForm.gender==='ذكر'?'sel':''}" onclick="setF('gender','ذكر')">ذكر</span>
+              <span class="chip ${WizForm.gender==='أنثى'?'sel':''}" onclick="setF('gender','أنثى')">أنثى</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn primary" onclick="submit()">${editingId?'✓ حفظ التعديل':'＋ إضافة'}</button>
+            ${editingId?'<button class="btn ghost" onclick="cancelEdit()">إلغاء</button>':''}
+            ${!editingId?`<button class="btn ghost" onclick="addSample()">⚡ قائمة تجريبية</button>`:''}
+          </div>
+          <p class="hint">ابن/ابنة واحد يمكن تسجيل أكثر من طالب باسمه نفسه من شاشة الطلاب.</p>
+        </div>
+        <div class="card">
+          <div class="card-h">قائمة أولياء الأمور (${db.parents.length})</div>
+          <input class="search" type="text" placeholder="بحث بالاسم أو الهاتف…" value="${esc(q)}" oninput="q=this.value;renderListOnly();"/>
+          <div class="tblwrap" style="border:0;border-radius:0">
+          <table class="tbl">
+            <tr><th>الاسم</th><th>الهاتف</th><th>النوع</th><th>الأبناء في المدرسة</th><th></th></tr>
+            <tbody id="prows"></tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="wizfoot">
+      <a class="btn ghost" href="index.html" style="text-decoration:none">→ الصفوف والشعب</a>
+      <div class="footnote">${db.parents.length?`${db.parents.length} وليّ أمر محفوظ — تابع إلى الطلاب`:'أضف أولياء الأمور (أو القائمة التجريبية) ثم تابع'}</div>
+      <a class="btn primary" href="wiz-students.html" style="text-decoration:none">التالي: الطلاب ←</a>
+    </div>`;
+  renderListOnly();
+}
+function renderListOnly(){
+  const el=$('#prows');if(!el)return;
+  const list=db.parents.filter(p=>{
+    const qq=q.trim();
+    return !qq||p.name.includes(qq)||(p.phone||'').includes(qq);
+  });
+  el.innerHTML=list.length?list.map(p=>{
+    const kids=studentsOfParent(db,p.id);
+    const kidsHtml=kids.length
+      ?`<b style="color:var(--p2)">${kids.length}</b> — ${kids.map(k=>k.name.split(' ')[0]).join('، ')}`
+      :'<span style="color:var(--faint)">لا بعد</span>';
+    return `<tr>
+      <td><b>${esc(p.name)}</b></td>
+      <td>${esc(p.phone)||'—'}</td>
+      <td>${p.gender}</td>
+      <td>${kidsHtml}</td>
+      <td style="white-space:nowrap">
+        <a class="btn tiny outline-p" style="cursor:pointer" onclick="startEdit('${p.id}')">تعديل</a>
+        <a class="btn tiny ghost" style="cursor:pointer;color:var(--bad)" onclick="delParent('${p.id}')">حذف</a>
+      </td>
+    </tr>`;
+  }).join('')
+  :'<tr><td colspan="5" style="text-align:center;color:var(--faint);padding:24px">لا أولياء أمور بعد</td></tr>';
+}
+render();
+</script>
+</body>
+</html>

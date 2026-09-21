@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>مسار إعداد المدرسة — لوحة التقدم</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<div class="topbar">
+  <span class="t">🏫 مسار إعداد المدرسة</span>
+  <span class="d">من البيانات الأساسية حتى توزيع الطلاب على الشعب — كل خطوة شاشة مستقلة</span>
+  <button class="reset" onclick="S.resetAll()">↺ مسح كل البيانات</button>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+
+/* ---------- ما ينقص / التالي / الإحصائيات ---------- */
+function statsOf(d){
+  if(!d.school) return null;
+  const y=d.school.yearLabel;
+  const secs=(d.sectionsByYear&&d.sectionsByYear[y])||[];
+  const full=secs.filter(s=>countInSection(d,sectionKey(s))>=s.max).length;
+  return {students:(d.students||[]).length,un:unassignedCount(d),
+    teachers:(d.teachers||[]).length,parents:(d.parents||[]).length,
+    subjects:totalSubjects(d),secs:secs.length,full,levels:totalLevels(d)};
+}
+function missingOf(d,st){
+  const un=unassignedCount(d); const out=[];
+  const tp=teachPlanStats(d,d.school?d.school.yearLabel:null);
+  if(!st.school) out.push({no:1,title:'بيانات المدرسة والمسارات',why:'لم تُدخل بيانات المدرسة بعد'});
+  if(st.school&&!st.stages) out.push({no:2,title:'المستويات الدراسية',why:'لا مستويات معرَّفة لكل المسارات'});
+  if(st.school&&!st.subjects) out.push({no:3,title:'المواد الدراسية',why:'بعض المسارات بلا مواد',opt:true});
+  if(st.school&&!st.teachers) out.push({no:4,title:'المعلمون',why:'لا معلمون مسجَّلون'});
+  if(st.school&&st.stages&&!st.sections) out.push({no:5,title:'الصفوف والشعب',why:'لا شعب مسجلة للعام الحالي'});
+  if(st.school&&!st.parents) out.push({no:6,title:'أولياء الأمور',why:'لا أولياء أمور مسجَّلون'});
+  if(st.school&&st.stages&&!st.students) out.push({no:7,title:'الطلاب',why:'لا طلاب مسجَّلون'});
+  if(st.students&&st.sections&&!st.enroll) out.push({no:8,title:'توزيع الطلاب على الشعب',why:`${un} من ${(d.students||[]).length} طلاب غير موزَّعين`});
+  if(st.enroll&&!st.teachPlan) out.push({no:9,title:'تعيينات التدريس',why:`${tp.missing.length} مادة/شعبة بلا معلم معيَّن`});
+  if(st.teachPlan&&!st.behavior) out.push({no:10,title:'إدارة السلوك',why:'قوائم السلوكيات/النقاط أو حدود التنبيه غير مكتملة'});
+  return out;
+}
+function nextOf(st){
+  if(!st.school)  return {no:1,title:'بيانات المدرسة والمسارات',href:'wiz-school.html'};
+  if(!st.stages)  return {no:2,title:'المستويات الدراسية',href:'wiz-stages.html'};
+  if(!st.teachers)return {no:4,title:'المعلمون',href:'wiz-teachers.html'};
+  if(!st.sections)return {no:5,title:'الصفوف والشعب',href:'index.html'};
+  if(!st.parents) return {no:6,title:'أولياء الأمور',href:'wiz-parents.html'};
+  if(!st.students)return {no:7,title:'الطلاب',href:'wiz-students.html'};
+  if(!st.enroll)  return {no:8,title:'توزيع الطلاب على الشعب',href:'wiz-enroll.html'};
+  if(st.enroll&&!st.teachPlan)  return {no:9,title:'تعيينات التدريس',href:'wiz-teachplan.html'};
+  if(st.teachPlan&&!st.behavior)  return {no:10,title:'إدارة السلوك',href:'wiz-behavior.html'};
+  return null;
+}
+function statChip(icon,val,sub,subBad){
+  return `<div style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:12.5px;font-weight:700;color:#374151">
+    ${icon} <b style="color:var(--p2);font-size:14px">${val}</b>
+    ${sub?`<span style="font-size:11.5px;color:${subBad?'var(--bad)':'var(--mut)'};font-weight:700"> · ${sub}</span>`:''}</div>`;
+}
+
+function render(){
+  db=loadDB();
+  const st=setupStatus(db);
+  const pids=db.school?db.school.paths:[];
+  const pathSum=pids.map(p=>`${PATHS_META[p].flag} ${levelCountOfPath(db,p)}`).join(' · ')||'—';
+  const un=unassignedCount(db);
+  const secsAll=Object.values(db.sectionsByYear).filter(a=>a.length);
+  const S=statsOf(db);
+  const miss=missingOf(db,st);
+  const nxt=nextOf(st);
+
+  const cards=[
+    {no:'1',title:'بيانات المدرسة والمسارات',href:'wiz-school.html',icon:'🏫',
+     state:st.school?'ok':'miss',stateLabel:st.school?'مكتملة':'لم تبدأ',
+     body:st.school
+       ?`${db.school.name} · ${db.school.type} · ${db.school.city} · ${db.school.yearLabel} · ${pids.length} مسارات`
+       :'اسم المدرسة، نوعها، المسارات المتوفرة (وطني / دولي / بريطاني)، العام الدراسي والجدول.'},
+    {no:'2',title:'المستويات الدراسية لكل مسار',href:'wiz-stages.html',icon:'🎚️',
+     state:st.stages?'ok':(st.school?'miss':'warn'),stateLabel:st.stages?'مكتملة':(st.school?'لم تبدأ':'يتطلب الخطوة 1'),
+     body:st.stages?`المسارات: ${pathSum} مستوى`:'قوالب النظام لكل مسار (وطني/بريطاني/دولي) قابلة للتعديل.'},
+    {no:'3',title:'المواد الدراسية',href:'wiz-subjects.html',icon:'📚',
+     state:st.subjects?'ok':(st.school?'warn':'miss'),stateLabel:st.subjects?'مكتملة':(st.school?'موصى بها':'يتطلب الخطوة 1'),
+     body:st.subjects?`${totalSubjects(db)} مادة موزعة على ${pids.length} مسارات`:'مواد كل مسار (قوالب جاهزة + إضافة مخصصة).'},
+    {no:'4',title:'المعلمون',href:'wiz-teachers.html',icon:'👥',
+     state:st.teachers?'ok':'miss',stateLabel:st.teachers?'مكتملة':'لم تبدأ',
+     body:st.teachers?`${db.teachers.length} معلمًا`:'أسماء المعلمين وتخصصاتهم وحدود العبء.'},
+    {no:'5',title:'الصفوف والشعب',href:'index.html',icon:'🏗️',
+     state:st.sections?'ok':'miss',
+     stateLabel:st.sections?'مُنشأة':'يتطلب الخطوات 1 و2 و4',
+     body:st.sections?secsAll.map(([y,a])=>`${y}: ${a.length} شعبة`).join(' · '):'بنية الشعب، الحد الأقصى، وتعيين مربّي الصف.'},
+    {no:'6',title:'أولياء الأمور',href:'wiz-parents.html',icon:'👨‍👦',
+     state:st.parents?'ok':'miss',stateLabel:st.parents?'مكتملة':'لم تبدأ',
+     body:st.parents?`${db.parents.length} وليّ أمر`:'بيانات وليّ الأمر — يمكن أن يكون لأكثر من ابن.'},
+    {no:'7',title:'الطلاب',href:'wiz-students.html',icon:'🎒',
+     state:st.students?'ok':'miss',stateLabel:st.students?'مُسجَّلون':'لم تبدأ',
+     body:st.students
+       ?`${db.students.length} طالبًا (${unassignedCount(db)} غير موزّع)`
+       :'تسجيل الطلاب بالمسار والمستوى مع ربط وليّ الأمر.'},
+    {no:'8',title:'توزيع الطلاب على الشعب',href:'wiz-enroll.html',icon:'🧩',
+     state:st.enroll?'ok':(st.students&&st.sections?'warn':'miss'),
+     stateLabel:st.enroll?'مكتمل':((st.students&&st.sections)?`يتبقى ${un}`:'يتطلب الطلاب والشعب'),
+     body:st.enroll?`كل الطلاب موزّعون على شعب ${db.school?db.school.yearLabel:''}`
+       :'توزيع يدوي أو تلقائي حسب المرحلة والمسار المسجل به الطالب، مع احترام الحد الأقصى.'},
+    {no:'9',title:'تعيينات التدريس — معلم لكل مادة في كل شعبة',href:'wiz-teachplan.html',icon:'📋',
+     state:st.teachPlan?'ok':(st.enroll?'warn':'miss'),stateLabel:st.teachPlan?'مكتملة':(st.enroll?'بانتظار التعيين':'يتطلب المعلمين والشعب'),
+     body:st.teachPlan?'كل مادة في كل شعبة لها معلم معيَّن — و«صفوفي» المعلم جاهز'
+       :'منصة واحدة تحدد من يدرّس كل مادة في كل شعبة (يدويًا أو تلقائيًا حسب التخصص)، وتربط مربّي الصف بصلاحيات صفّه.'},
+    {no:'10',title:'إدارة السلوك — نقاط وتنبيهات ومكافآت',href:'wiz-behavior.html',icon:'⚖️',
+     state:st.behavior?'ok':(st.teachPlan?'warn':'miss'),stateLabel:st.behavior?'مُهيّأة':'بانتظار التهيئة',
+     body:st.behavior?'قوائم السلوكيات السلبية/الإيجابية بنقاطها، سلّم التنبيه (تنبيه/إنذار/تدخل تربوي)، مستويات المكافأة، وحالات المتابعة'
+       :'نظام النقاط السلوكية: سلوكيات قابلة للتعديل بنقاط محددة، 3 مراحل تنبيه بحدود تهيئة، 3 مستويات مكافأة إيجابية، وسجل تحليلي.'},
+    {no:'11',title:'البوابة: المعلم والطالب ووليّ الأمر',href:'portal.html',icon:'🚪',
+     state:(st.enroll&&st.parents)?'ok':'warn',stateLabel:(st.enroll&&st.parents)?'جاهزة':'أكمل الإعداد أولًا',
+     body:st.enroll
+       ?`تسجيل دخول لكل دور: مهام واختبارات وتقييم وعلامات، كشوفات مدرسية قابلة للطباعة، محادثات فردية (One-to-One)، وحضور مع إشعار وليّ الأمر.`
+       :'بعد اكتمل الإعداد تصبح هذه البوابة وجه الاستخدام اليومي للمدرسة: مهمة المعلم، ومتابعة الطالب، وقراءة وليّ الأمر.'}
+  ];
+
+  const cta=nxt
+    ?`<div style="margin-top:18px"><button onclick="location.href='${nxt.href}'" style="background:#fff;color:#312E81;border:0;border-radius:12px;padding:13px 26px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.25)">▶ أكمل من حيث توقفت: الخطوة ${nxt.no} — ${nxt.title}</button></div>`
+    :`<div style="margin-top:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span style="display:inline-flex;align-items:center;gap:8px;background:var(--okbg);border:1.5px solid var(--okline);color:#065F46;border-radius:12px;padding:12px 22px;font-size:14.5px;font-weight:800">🎉 اكتمل الإعداد ${st.done}/${st.total} — النظام جاهز للاستخدام</span><a class="btn primary" href="portal.html" style="text-decoration:none">🚪 دخول البوابة</a></div>`;
+
+  const statsHtml=S?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${statChip('🎒',S.students+' طالبًا',S.un?S.un+' بانتظار التوزيع':'كلهم موزَّعون',S.un>0)}
+      ${statChip('👥',S.teachers+' معلمًا')}
+      ${statChip('👨‍',S.parents+' وليّ أمر')}
+      ${statChip('🏗️',S.secs+' شعبة ('+db.school.yearLabel+')',S.full?S.full+' ممتلئة':'لا ممتلئة',false)}
+      ${statChip('📚',S.subjects+' مادة')}
+      ${statChip('🎚️',S.levels+' مستوى')}
+    </div>`:'';
+
+  const missHtml=miss.length
+    ?`<div style="background:var(--warnbg);border:1.5px solid var(--warnline);border-radius:14px;padding:14px 18px;margin-bottom:14px">
+        <div style="font-size:14px;font-weight:800;color:#92400E;margin-bottom:6px">🧭 ما ينقصك لإكمال الإعداد (${miss.length} من ${st.total}):</div>
+        ${miss.map(m=>`<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;font-size:13.5px;font-weight:600;border-bottom:1px dashed var(--warnline)">${m.opt?'':'<b style="color:#92400E">'+m.no+'.</b> '}<b>${m.title}</b><span style="color:#92400E;opacity:.85">— ${m.why}</span>${m.opt?'<span style="font-size:10.5px;font-weight:800;background:#fff;border:1px solid var(--warnline);border-radius:999px;padding:1px 9px;color:#92400E">موصى بها (لا توقف التقدم)</span>':''}</div>`).join('')}
+      </div>`
+    :'';
+
+  $('#app').innerHTML=`
+  <div class="hub-hero">
+    <div style="font-size:13px;font-weight:700;opacity:.85">لوحة الإعداد</div>
+    <h1>مسار إعداد المدرسة من الصفر</h1>
+    <p>عشر شاشات مستقلة: بيانات المدرسة والمسارات ← المستويات ← المواد ← المعلمون ← الصفوف والشعب ← أولياء الأمور ← الطلاب ← التوزيع على الشعب ← تعيينات التدريس ← إدارة السلوك. كل شاشة تحفظ فورًا، ويمكنك العودة لأي وقت — ثم تدخل البوابة (معلم/طالب/وليّ أمر).</p>
+    <div class="progress-wrap">
+      <div class="pbar"><i style="width:${Math.round(st.done/st.total*100)}%"></i></div>
+      <b>${st.done}/${st.total} مكتمل</b>
+    </div>
+    ${cta}
+  </div>
+  ${statsHtml}
+  ${missHtml}
+  ${cards.map(c=>`
+    <div class="hcard ${c.state==='ok'?'done':''}">
+      <div class="no">${c.icon}</div>
+      <div class="info">
+        <b>${c.no}. ${c.title}</b>
+        <p>${c.body}</p>
+      </div>
+      <div class="side">
+        <span class="status-pill ${c.state}">${c.stateLabel}</span>
+        <a class="btn ${c.state==='ok'?'ghost':'primary'}" href="${c.href}" style="text-decoration:none">
+          ${c.state==='ok'?'عرض وتعديل':'بدء'}
+        </a>
+      </div>
+    </div>`).join('')}
+  <div class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+    <div style="flex:1;min-width:260px">
+      <b>⚡ تريد رؤية النظام كاملًا فورًا؟</b>
+      <p class="hint" style="margin-top:4px">حمّل بيانات مدرسة تجريبية كاملة: مساران (وطني وبريطاني)، 29 مستوى، 19 مادة، 13 معلمًا، شعب لعامين، 18 وليّ أمر (منهم من له أبناء في مسارين)، و45 طالبًا — 30 موزّعًا و15 بانتظار التوزيع. يشمل أيضًا بيانات بوابة جاهزة للتجربة: مهام واختبارات مُقيَّمة، محادثات فردية، وحضور مع إشعارات أولياء الأمور.</p>
+    </div>
+    <button class="btn primary" onclick="S.loadDemo()">⚡ تحميل بيانات تجريبية كاملة</button>
+  </div>`;
+}
+
+const S={
+  loadDemo(){
+    askConfirm('تحميل بيانات تجريبية','سيتم استبدال كل البيانات الحالية ببيانات المدرسة التجريبية الكاملة.',()=>{
+      loadDemoSchool(); render();
+      toast('تم التحميل — جرّب الخطوة 8: توزيع الطلاب على الشعب',{type:'ok'});
+    },'تحميل',true);
+  },
+  resetAll(){
+    askConfirm('مسح كل البيانات','سيُمحى كل شيء: المدرسة، المسارات، المواد، المعلمون، أولياء الأمور، الطلاب، والشعب.',()=>{
+      resetAllData(); db=freshDB(); render();
+      toast('تم مسح كل البيانات');
+    },'مسح',true);
+  }
+};
+render();
+</script>
+</body>
+</html>

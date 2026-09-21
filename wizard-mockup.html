@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>إنشاء الصفوف والشعب — مخطط + شاشات (معالج 4 خطوات)</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+--p:#4F46E5;--p2:#4338CA;--p50:#EEF2FF;
+--ink:#111827;--mut:#6B7280;--faint:#9CA3AF;
+--line:#E5E7EB;--bg:#EEF1F6;
+--ok:#059669;--okbg:#ECFDF5;--okline:#A7F3D0;
+--warn:#B45309;--warnbg:#FFFBEB;--warnline:#FCD34D;
+--bad:#DC2626;
+}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",Tahoma,"Noto Naskh Arabic","Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
+.page{max-width:1240px;margin:0 auto;padding:36px 22px 90px}
+
+/* ---------- hero ---------- */
+.hero{background:linear-gradient(135deg,#312E81,#4F46E5);color:#fff;border-radius:22px;padding:34px 36px;margin-bottom:22px}
+.hero .kicker{font-size:13px;font-weight:700;opacity:.85}
+.hero h1{font-size:27px;margin:8px 0 10px;line-height:1.45}
+.hero .lede{font-size:15px;opacity:.95;max-width:920px}
+.hero .lede b{background:rgba(255,255,255,.18);padding:2px 8px;border-radius:6px}
+.hero-badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.hero-badges span{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:700}
+.topnav{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 10px}
+.topnav a{text-decoration:none;background:#fff;border:1.5px solid var(--line);color:#374151;font-size:13.5px;font-weight:700;border-radius:999px;padding:9px 16px;box-shadow:0 1px 2px rgba(17,24,39,.05)}
+.topnav a:hover{border-color:var(--p);color:var(--p)}
+.sec{margin-top:54px}
+.sec>h2{font-size:22px;margin-bottom:6px}
+.sec-sub{color:var(--mut);font-size:14px;margin-bottom:18px;max-width:900px}
+.diagram-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px;overflow:auto}
+.diagram-card svg{display:block;margin:0 auto;max-width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:14px;font-size:13px;color:var(--mut);font-weight:600}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:4px;margin-inline-end:6px;vertical-align:-2px}
+
+/* ---------- frames ---------- */
+.frame-tag{max-width:1120px;margin:42px auto 10px;padding:0 4px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.frame-tag .num{font-size:12.5px;font-weight:800;color:#fff;background:#334155;border-radius:8px;padding:3px 10px}
+.frame-tag .ttl{font-size:17px;font-weight:800}
+.frame-tag .sub{font-size:13px;color:var(--mut)}
+.frame{max-width:1120px;margin:0 auto;background:#fff;border:1px solid #D9DFEA;border-radius:18px;overflow:hidden;box-shadow:0 16px 44px rgba(17,24,39,.10)}
+.notes{max-width:1120px;margin:12px auto 0;background:var(--warnbg);border:1.5px dashed #F59E0B;border-radius:12px;padding:11px 16px;font-size:13px;color:#78350F;display:flex;flex-wrap:wrap;gap:6px 22px}
+.notes span b{color:#92400E}
+.nb{display:inline-grid;place-items:center;min-width:21px;height:21px;border-radius:50%;background:#F59E0B;color:#fff;font-weight:800;font-size:12px;padding:0 5px}
+
+/* ---------- app chrome ---------- */
+.appbar{display:flex;justify-content:space-between;align-items:center;height:54px;padding:0 22px;border-bottom:1px solid var(--line);background:#fff}
+.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:15px}
+.brand .logo{width:30px;height:30px;border-radius:9px;background:var(--p);color:#fff;display:grid;place-items:center;font-size:15px}
+.crumb{color:var(--faint);font-size:12.5px;font-weight:600;margin-inline-start:6px}
+.appbar-l{display:flex;align-items:center;gap:12px;color:#6B7280;font-size:15px}
+.uav{width:32px;height:32px;border-radius:50%;background:#E0E7FF;color:#3730A3;display:grid;place-items:center;font-weight:800;font-size:13px}
+
+/* ---------- wizard shell ---------- */
+.wizhead{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:18px 28px 10px;background:#fff;flex-wrap:wrap}
+.wiztitle{font-size:19px;font-weight:800}
+.wizsub{font-size:12.5px;color:var(--mut);font-weight:600}
+.wsteps{display:flex;align-items:center;flex-wrap:wrap;gap:0}
+.wstep{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--faint);white-space:nowrap}
+.wstep .d{width:26px;height:26px;border-radius:50%;background:#E5E7EB;color:#6B7280;display:grid;place-items:center;font-size:12px;font-weight:800}
+.wstep.on{color:var(--p)} .wstep.on .d{background:var(--p);color:#fff}
+.wstep.done{color:var(--ok)} .wstep.done .d{background:var(--ok);color:#fff}
+.wline{width:30px;height:2px;background:var(--line);margin:0 8px}
+.wizbody{background:#F8FAFC;padding:16px 28px 24px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+.card-h{font-size:14.5px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hint{font-size:12.5px;color:var(--mut);margin-top:10px}
+.wizfoot{display:flex;justify-content:space-between;align-items:center;padding:14px 28px;background:#fff;border-top:1px solid var(--line);gap:10px;flex-wrap:wrap}
+.footnote{font-size:12.5px;color:var(--mut);font-weight:700}
+
+/* ---------- primitives ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:9px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px solid var(--line);border-radius:999px;background:#fff;font-size:13px;font-weight:700;color:#374151;cursor:pointer}
+.chip.sel{background:var(--p);border-color:var(--p);color:#fff}
+.chip.off{opacity:.4;cursor:not-allowed}
+.chip.sec{border-color:var(--p);background:var(--p50);color:var(--p2)}
+.chip.add{border-style:dashed;color:var(--p);background:var(--p50)}
+.chip.sm{padding:4px 11px;font-size:12px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;border:1.5px solid transparent;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit}
+.btn.primary{background:var(--p);color:#fff}
+.btn.primary:hover{background:var(--p2)}
+.btn.ghost{background:#fff;border-color:var(--line);color:#374151}
+.btn.tiny{padding:6px 13px;font-size:12.5px;border-radius:8px}
+.btn.outline-p{background:#fff;border-color:var(--p);color:var(--p2)}
+.num{display:inline-flex;align-items:center;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.num button{width:34px;height:34px;border:0;background:#F9FAFB;font-size:17px;cursor:pointer;color:#374151;line-height:1}
+.num b{min-width:50px;text-align:center;font-size:15px}
+.tip{background:var(--p50);border:1.5px dashed var(--p);color:#3730A3;border-radius:12px;padding:10px 14px;font-size:13px;font-weight:600}
+
+/* ---------- frame 2 ---------- */
+.srcs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:900px){.srcs{grid-template-columns:1fr}}
+.src{border:1.5px solid var(--line);border-radius:12px;padding:14px;position:relative;background:#fff}
+.src.sel{border-color:var(--p);background:var(--p50);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.src b{font-size:14px}
+.src p{font-size:12px;color:var(--mut);margin-top:4px}
+.src .pick{margin-top:10px;font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:#fff;font-weight:700;color:#374151}
+.rec{position:absolute;top:-10px;left:12px;background:var(--ok);color:#fff;font-size:10.5px;font-weight:800;border-radius:999px;padding:2px 10px}
+.banner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--okbg);border:1px solid var(--okline);border-radius:12px;padding:11px 16px;font-size:13.5px;color:#065F46;margin-bottom:14px}
+.gsec{display:grid;grid-template-columns:170px 1fr auto;gap:14px;align-items:center;padding:12px 0;border-bottom:1px dashed var(--line)}
+@media(max-width:800px){.gsec{grid-template-columns:1fr}}
+.gsec .gname{font-weight:800;font-size:14px}
+.gsec .gname small{display:block;font-weight:600;color:var(--faint);font-size:11.5px}
+.gmax{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);font-weight:700}
+.globalmax{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:#111827;color:#fff;border-radius:14px;padding:13px 18px;font-size:14px;font-weight:800}
+
+/* ---------- frame 3 ---------- */
+.tlayout{display:grid;grid-template-columns:330px 1fr;gap:14px}
+@media(max-width:900px){.tlayout{grid-template-columns:1fr}}
+.tcard{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;cursor:pointer;background:#fff}
+.tcard.sel{border-color:var(--p);background:var(--p50);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.tav{width:36px;height:36px;border-radius:50%;background:var(--p50);color:var(--p2);display:grid;place-items:center;font-weight:800;font-size:12.5px;flex:none}
+.tcard small{color:var(--mut);font-size:11.5px;display:block;font-weight:600}
+.tcard .warnload{color:var(--warn);font-weight:800;font-size:11px}
+.tcheck{margin-inline-start:auto;color:var(--ok);font-size:16px;font-weight:800}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border:1.5px solid var(--line);border-radius:10px;margin-bottom:8px;font-size:13.5px;font-weight:800;background:#fff;flex-wrap:wrap}
+.srow.sel{border-color:var(--p);background:var(--p50);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.tchip{background:var(--okbg);color:#065F46;border:1px solid var(--okline);border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:700}
+.assigning{background:var(--p50);color:var(--p2);border:1.5px dashed var(--p);padding:4px 12px;border-radius:999px;font-size:12.5px;font-weight:700}
+.smore{color:var(--faint);font-size:12.5px;font-weight:700;text-align:center;padding:4px 0 8px}
+.shead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.progresspill{margin-inline-start:auto;background:var(--p50);color:var(--p2);font-size:12px;font-weight:800;border-radius:999px;padding:4px 12px}
+.pbar{height:6px;background:#E5E7EB;border-radius:99px;overflow:hidden;flex:1;min-width:120px}
+.pbar i{display:block;height:100%;width:69%;background:var(--ok);border-radius:99px}
+.bulk{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px dashed var(--line);margin-top:10px;padding-top:12px;font-size:13px;font-weight:700;color:#374151}
+.bulk .pick{border:1.5px solid var(--p);color:var(--p2);background:var(--p50);border-radius:8px;padding:6px 12px}
+
+/* ---------- frame 4 ---------- */
+.valid{background:#fff;border:1px solid var(--line);border-radius:14px;padding:4px 18px;margin-bottom:14px}
+.v{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed #EEF1F5;font-size:13.5px;font-weight:600}
+.v:last-child{border-bottom:0}
+.v.ok{color:#065F46}.v.warn{color:#92400E}
+.v a{color:var(--p);font-weight:800;font-size:12.5px;text-decoration:none}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th{text-align:right;background:#F9FAFB;color:var(--mut);font-size:12px;font-weight:800;padding:9px 12px;border-bottom:1.5px solid var(--line)}
+.tbl td{padding:10px 12px;border-bottom:1px solid #F1F3F7;font-weight:600}
+.tbl a.edit{color:var(--p);font-weight:800;font-size:12.5px;text-decoration:none}
+.more-row td{color:var(--faint);font-weight:700;text-align:center;background:#FAFBFD}
+tr.new td{background:#F6FEFA}
+
+/* ---------- dashboard ---------- */
+.dashhead{display:flex;justify-content:space-between;align-items:center;padding:22px 26px 8px;gap:14px;flex-wrap:wrap}
+.dashhead h2{font-size:20px}
+.dashhead .sub{font-size:12.5px;color:var(--mut);font-weight:600}
+.stats{display:flex;gap:10px;padding:4px 26px;flex-wrap:wrap}
+.stat{background:#F8FAFC;border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:12.5px;font-weight:700;color:#374151}
+.stat b{color:var(--p2);font-size:14px}
+.dash-body{padding:12px 26px 26px}
+.ytabs{display:flex;gap:9px;padding:8px 26px 0;flex-wrap:wrap}
+.empty{border:2px dashed #CBD5E1;border-radius:16px;padding:42px 20px;text-align:center;margin-top:14px;background:#FAFBFD}
+.empty .ic{font-size:40px}
+.empty b{display:block;font-size:16px;margin-top:10px}
+.empty p{color:var(--mut);font-size:13.5px;max-width:540px;margin:6px auto 16px}
+.newbadge{background:var(--okbg);color:#065F46;border:1px solid var(--okline);font-size:10.5px;font-weight:800;border-radius:999px;padding:1px 9px;margin-inline-start:8px}
+.toast{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#065F46;color:#fff;border-radius:14px;padding:13px 18px;margin:16px 26px 4px;font-size:14px;font-weight:700;box-shadow:0 10px 30px rgba(6,95,70,.35)}
+.toast button{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:8px;padding:6px 14px;font-weight:800;font-size:12.5px;cursor:pointer;font-family:inherit}
+
+/* ---------- why / spec ---------- */
+.cards2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+@media(max-width:900px){.cards2{grid-template-columns:1fr}}
+.wcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px}
+.wcard b{font-size:14.5px;display:flex;align-items:center;gap:8px}
+.wcard p{font-size:13px;color:var(--mut);margin-top:6px}
+.swatch{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;border:1px solid rgba(0,0,0,.08)}
+.kv{width:100%;border-collapse:collapse;font-size:13.5px}
+.kv td{padding:9px 12px;border-bottom:1px solid #F1F3F7;vertical-align:top}
+.kv td:first-child{font-weight:800;width:210px;color:#374151}
+.filelist{display:flex;flex-direction:column;gap:8px}
+.filelist div{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:13.5px;font-weight:700}
+.filelist code{background:#F3F4F6;padding:2px 8px;border-radius:6px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="hero">
+  <div class="kicker">نظام إدارة المدرسة — وحدة الصفوف والشعب</div>
+  <h1>إنشاء الصفوف والشعب: معالج (Wizard) من 4 خطوات</h1>
+  <p class="lede">الحل المقترح: إنشاء كامل <b>بالنقرات فقط</b> — قوالب جاهزة، نسخ من بنية العام الماضي، عدّادات (Steppers) للحد الأقصى، وبطاقات لتعيين مربّي الصف. لا يُطلب إدخال من لوحة المفاتيح إلا في حالات نادرة (كالبحث عن معلّم في قائمة طويلة).</p>
+  <div class="hero-badges">
+    <span>🧩 قوالب + نسخ من العام الماضي</span>
+    <span>🔢 عدّادات للحد الأقصى + «تطبيق على الكل»</span>
+    <span>👥 تعيين معلّمين فردي وجماعي</span>
+    <span>✅ مراجعة وفحص قبل الإنشاء</span>
+  </div>
+</header>
+
+<nav class="topnav">
+  <a href="#diagram">🗺️ ١) مخطط سير العمل</a>
+  <a href="#screens">🖥️ ٢) الشاشات (6 إطارات)</a>
+  <a href="#why">🎯 ٣) لماذا هذا الحل؟</a>
+  <a href="#spec">📐 ٤) مواصفات التصميم + النقل إلى فيجما</a>
+</nav>
+
+<!-- ================================================================ -->
+<section id="diagram" class="sec">
+  <h2>١) مخطط سير العمل</h2>
+  <p class="sec-sub">المسار الكامل من زر البداية حتى الإنشاء، مع فرع «من الصفر» وفحص الصحة قبل التأكيد.</p>
+
+  <div class="diagram-card">
+  <svg viewBox="0 0 980 1440" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI',Tahoma,'Noto Naskh Arabic',Arial,sans-serif">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker>
+      <marker id="arrO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#F59E0B"/></marker>
+    </defs>
+
+    <!-- start -->
+    <rect x="340" y="20" width="300" height="52" rx="26" fill="#111827"/>
+    <text x="490" y="52" text-anchor="middle" fill="#fff" font-size="15.5" font-weight="700">زرّ «إنشاء صفوف وشعب»</text>
+    <line x1="490" y1="72" x2="490" y2="104" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- step 1 -->
+    <rect x="270" y="110" width="440" height="116" rx="14" fill="#EEF2FF" stroke="#6366F1" stroke-width="1.5"/>
+    <rect x="572" y="124" width="126" height="26" rx="13" fill="#6366F1"/>
+    <text x="635" y="142" text-anchor="middle" fill="#fff" font-size="12.5" font-weight="700">الخطوة ١</text>
+    <text x="490" y="180" text-anchor="middle" fill="#1E1B4B" font-size="16" font-weight="800">العام الدراسي والمستوى</text>
+    <text x="490" y="202" text-anchor="middle" fill="#4B5563" font-size="13">اختيار العام + الصفوف بالرقاقات (Chips)</text>
+    <text x="490" y="220" text-anchor="middle" fill="#7C3AED" font-size="12" font-weight="700">بدون كتابة — نقرة واحدة لكل عنصر</text>
+    <line x1="490" y1="226" x2="490" y2="260" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- step 2 -->
+    <rect x="270" y="264" width="440" height="116" rx="14" fill="#EEF2FF" stroke="#6366F1" stroke-width="1.5"/>
+    <rect x="572" y="278" width="126" height="26" rx="13" fill="#6366F1"/>
+    <text x="635" y="296" text-anchor="middle" fill="#fff" font-size="12.5" font-weight="700">الخطوة ٢</text>
+    <text x="490" y="334" text-anchor="middle" fill="#1E1B4B" font-size="16" font-weight="800">الشعب: المصدر والبنية</text>
+    <text x="490" y="356" text-anchor="middle" fill="#4B5563" font-size="13">قالب جاهز · نسخة من العام الماضي · من الصفر</text>
+    <text x="490" y="374" text-anchor="middle" fill="#7C3AED" font-size="12" font-weight="700">أسماء الشعب (أ، ب، ج…) تُنشأ تلقائيًا</text>
+    <line x1="490" y1="380" x2="490" y2="412" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+    <line x1="712" y1="322" x2="800" y2="322" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="806" y="327" fill="#92400E" font-size="12.5" font-weight="700">⌨ صفر إدخال من لوحة المفاتيح</text>
+
+    <!-- decision 1 -->
+    <polygon points="490,418 650,490 490,562 330,490" fill="#FFF7ED" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="490" y="486" text-anchor="middle" fill="#92400E" font-size="15" font-weight="800">البنية يدوية؟</text>
+    <text x="490" y="508" text-anchor="middle" fill="#B45309" font-size="11.5">(اختر «من الصفر»)</text>
+    <line x1="330" y1="490" x2="304" y2="490" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="317" y="478" text-anchor="middle" fill="#047857" font-size="12.5" font-weight="800">لا</text>
+    <line x1="650" y1="490" x2="676" y2="490" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="663" y="478" text-anchor="middle" fill="#1D4ED8" font-size="12.5" font-weight="800">نعم</text>
+
+    <!-- auto box -->
+    <rect x="30" y="436" width="270" height="108" rx="14" fill="#ECFDF5" stroke="#10B981" stroke-width="1.5"/>
+    <text x="165" y="470" text-anchor="middle" fill="#065F46" font-size="14.5" font-weight="800">توليد تلقائي</text>
+    <text x="165" y="494" text-anchor="middle" fill="#374151" font-size="12">الشعب وأسمائها من القالب</text>
+    <text x="165" y="512" text-anchor="middle" fill="#374151" font-size="12">أو من بنية العام الماضي</text>
+    <text x="165" y="533" text-anchor="middle" fill="#059669" font-size="11.5" font-weight="700">بدون أي نقرة إضافية</text>
+
+    <!-- manual box -->
+    <rect x="680" y="436" width="270" height="108" rx="14" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+    <text x="815" y="470" text-anchor="middle" fill="#1E3A8A" font-size="14.5" font-weight="800">ضبط يدوي</text>
+    <text x="815" y="494" text-anchor="middle" fill="#374151" font-size="12">أزرار + / − لعدد الشعب</text>
+    <text x="815" y="512" text-anchor="middle" fill="#374151" font-size="12">لكل صف، والأسماء تلقائية</text>
+    <text x="815" y="533" text-anchor="middle" fill="#2563EB" font-size="11.5" font-weight="700">لا كتابة أبدًا</text>
+
+    <!-- merge -->
+    <polyline points="165,544 165,600 490,600" fill="none" stroke="#4B5563" stroke-width="2"/>
+    <polyline points="815,544 815,600 490,600" fill="none" stroke="#4B5563" stroke-width="2"/>
+    <line x1="490" y1="600" x2="490" y2="634" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- step 3 -->
+    <rect x="270" y="640" width="440" height="116" rx="14" fill="#EEF2FF" stroke="#6366F1" stroke-width="1.5"/>
+    <rect x="572" y="654" width="126" height="26" rx="13" fill="#6366F1"/>
+    <text x="635" y="672" text-anchor="middle" fill="#fff" font-size="12.5" font-weight="700">الخطوة ٣</text>
+    <text x="490" y="710" text-anchor="middle" fill="#1E1B4B" font-size="16" font-weight="800">الحد الأقصى للتلاميد</text>
+    <text x="490" y="732" text-anchor="middle" fill="#4B5563" font-size="13">عداد (Stepper) عام + زر «تطبيق على الكل»</text>
+    <text x="490" y="750" text-anchor="middle" fill="#7C3AED" font-size="12" font-weight="700">تجاوز اختياري على مستوى كل صف/شعبة</text>
+    <line x1="268" y1="700" x2="180" y2="700" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="174" y="705" text-anchor="end" fill="#92400E" font-size="12.5" font-weight="700">🔢 الأرقام بأزرار العدّاد فقط</text>
+    <line x1="490" y1="756" x2="490" y2="788" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- step 4 -->
+    <rect x="270" y="794" width="440" height="116" rx="14" fill="#EEF2FF" stroke="#6366F1" stroke-width="1.5"/>
+    <rect x="572" y="808" width="126" height="26" rx="13" fill="#6366F1"/>
+    <text x="635" y="826" text-anchor="middle" fill="#fff" font-size="12.5" font-weight="700">الخطوة ٤</text>
+    <text x="490" y="864" text-anchor="middle" fill="#1E1B4B" font-size="16" font-weight="800">تعيين مربّي الصف</text>
+    <text x="490" y="886" text-anchor="middle" fill="#4B5563" font-size="13">بطاقات معلمين قابلة للنقر + تعيين جماعي</text>
+    <text x="490" y="904" text-anchor="middle" fill="#7C3AED" font-size="12" font-weight="700">عدّاد أعباء فوري وتنبيه للتحميل الزائد</text>
+    <line x1="712" y1="812" x2="790" y2="812" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="796" y="817" fill="#92400E" font-size="12.5" font-weight="700">👆 النقر أو السحب والإفلات</text>
+    <line x1="490" y1="910" x2="490" y2="942" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- review -->
+    <rect x="270" y="948" width="440" height="100" rx="14" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="1.5"/>
+    <rect x="572" y="962" width="126" height="26" rx="13" fill="#8B5CF6"/>
+    <text x="635" y="980" text-anchor="middle" fill="#fff" font-size="12.5" font-weight="700">المراجعة</text>
+    <text x="490" y="1016" text-anchor="middle" fill="#4C1D95" font-size="15" font-weight="800">ملخّص كامل + فحص صحة</text>
+    <text x="490" y="1036" text-anchor="middle" fill="#6D28D9" font-size="12.5" font-weight="700">كل نقص أو تعارض يظهر هنا قبل الإنشاء</text>
+    <line x1="490" y1="1048" x2="490" y2="1080" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- decision 2 -->
+    <polygon points="490,1086 650,1146 490,1206 330,1146" fill="#FFF7ED" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="490" y="1142" text-anchor="middle" fill="#92400E" font-size="14.5" font-weight="800">اكتملت البيانات</text>
+    <text x="490" y="1162" text-anchor="middle" fill="#92400E" font-size="14.5" font-weight="800">وصحّت؟</text>
+    <line x1="490" y1="1206" x2="490" y2="1240" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="502" y="1228" fill="#047857" font-size="12.5" font-weight="800">نعم</text>
+    <polyline points="650,1146 920,1146 920,852 714,852" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrO)"/>
+    <text x="934" y="1132" text-anchor="end" fill="#B45309" font-size="12" font-weight="800">لا — إرجاع إلى الخطوة المعنيّة</text>
+
+    <!-- create -->
+    <rect x="270" y="1246" width="440" height="80" rx="14" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+    <text x="490" y="1282" text-anchor="middle" fill="#065F46" font-size="15.5" font-weight="800">زرّ واحد: إنشاء الصفوف + الشعب + التعيينات</text>
+    <text x="490" y="1306" text-anchor="middle" fill="#047857" font-size="12.5" font-weight="700">عملية ذرّية — إما ينجح كل شيء أو لا يُنشأ شيء</text>
+    <line x1="490" y1="1326" x2="490" y2="1358" stroke="#4B5563" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- end -->
+    <rect x="270" y="1364" width="440" height="52" rx="26" fill="#059669"/>
+    <text x="490" y="1396" text-anchor="middle" fill="#fff" font-size="14.5" font-weight="800">رسالة نجاح + زر «تراجع» + صفحة الإدارة بالشعب الجديدة</text>
+  </svg>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:#EEF2FF;border:1.5px solid #6366F1"></i>خطوة في المعالج</span>
+    <span><i style="background:#FFF7ED;border:1.5px solid #F59E0B"></i>قرار</span>
+    <span><i style="background:#ECFDF5;border:1.5px solid #10B981"></i>مسار تلقائي / نجاح</span>
+    <span><i style="background:#EFF6FF;border:1.5px solid #3B82F6"></i>مسار يدوي</span>
+    <span><i style="background:#F5F3FF;border:1.5px solid #8B5CF6"></i>مراجعة</span>
+    <span><i style="background:transparent;border:1.5px dashed #F59E0B"></i>مسار الخطأ (إرجاع)</span>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="screens" class="sec">
+  <h2>٢) الشاشات — 6 إطارات (Frames) جاهزة للنقل إلى فيجما</h2>
+  <p class="sec-sub">واجهة سطح مكتب (Web) بلغة عربية RTL. كل إطار يعرض حالة، والشارات البرتقالية ①② تشير إلى نقاط التفاعل الموضّحة أسفل كل إطار.</p>
+
+  <!-- ================= FRAME 0 ================= -->
+  <div class="frame-tag"><span class="num">00</span><span class="ttl">صفحة إدارة الصفوف والشعب (نقطة البداية)</span><span class="sub">حالة: لا توجد شعب للعام الجديد</span></div>
+  <div class="frame">
+    <div class="appbar">
+      <div class="brand"><span class="logo">🎓</span>مدرسة الرواد<span class="crumb">/ الإعدادات / الصفوف والشعب</span></div>
+      <div class="appbar-l">🔔<span class="uav">ع</span></div>
+    </div>
+    <div class="dashhead">
+      <div>
+        <h2>الصفوف والشعب</h2>
+        <div class="sub">إدارة البنية الأكاديمية للعام الدراسي</div>
+      </div>
+      <button class="btn primary">＋ إنشاء صفوف وشعب <span class="nb" style="background:#fff;color:var(--p)">1</span></button>
+    </div>
+    <div class="ytabs">
+      <span class="chip">2025/2026 <small>(12 مستوى · 36 شعبة)</small></span>
+      <span class="chip sel">2026/2027</span>
+    </div>
+    <div class="dash-body">
+      <div class="empty">
+        <div class="ic">🗂️</div>
+        <b>لم تُنشأ صفوف أو شعب للعام الدراسي 2026/2027 بعد</b>
+        <p>ابدأ بالمعالج — تتم البنية والشعب والحد الأقصى وتعيين مربّي الصف كلها بالنقرات، دون الحاجة إلى كتابة متكررة.</p>
+        <button class="btn primary">＋ إنشاء صفوف وشعب جديدة <span class="nb" style="background:#fff;color:var(--p)">2</span></button>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <span><b>①</b> زر البداية ظاهر في ترويسة الصفحة دائمًا.</span>
+    <span><b>②</b> حالة «فارغة» تحوّل الفجوة إلى دعوة واضحة للبدء — دخول ثانٍ للمعالج.</span>
+  </div>
+
+  <!-- ================= FRAME 1 ================= -->
+  <div class="frame-tag"><span class="num">01</span><span class="ttl">الخطوة ١ — العام الدراسي والمستوى</span><span class="sub">اختيار بالنقر فقط</span></div>
+  <div class="frame">
+    <div class="appbar">
+      <div class="brand"><span class="logo">🎓</span>مدرسة الرواد<span class="crumb">/ المعالج: إنشاء الصفوف والشعب</span></div>
+      <div class="appbar-l">🔔<span class="uav">ع</span></div>
+    </div>
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">إنشاء الصفوف والشعب</div>
+        <div class="wizsub">4 خطوات · لن يُنشأ أي شيء قبل التأكيد النهائي</div>
+      </div>
+      <div class="wsteps">
+        <div class="wstep on"><span class="d">١</span>العام والمستوى</div><div class="wline"></div>
+        <div class="wstep"><span class="d">٢</span>الشعب والحد الأقصى</div><div class="wline"></div>
+        <div class="wstep"><span class="d">٣</span>مربّو الصف</div><div class="wline"></div>
+        <div class="wstep"><span class="d">٤</span>المراجعة</div>
+      </div>
+    </div>
+    <div class="wizbody">
+      <div class="card">
+        <div class="card-h">العام الدراسي <span class="nb">1</span></div>
+        <div class="chips">
+          <span class="chip off">2024/2025</span>
+          <span class="chip off">2025/2026</span>
+          <span class="chip sel">2026/2027 ✓</span>
+          <span class="chip">2027/2028</span>
+        </div>
+        <p class="hint">الافتراضي هو العام الدراسي القادم، ويمكن تغييره بالنقر. الأعوام المُنشأ فيها شعب غير قابلة للتحديد (تُدار من صفحة الإدارة).</p>
+      </div>
+      <div class="card">
+        <div class="card-h">اختر الصفوف / المستويات <span class="nb">2</span> <a href="#" class="btn tiny outline-p" style="margin-inline-start:auto">اختيار الكل</a></div>
+        <div class="chips">
+          <span class="chip">الروضة ١</span>
+          <span class="chip">الروضة ٢</span>
+          <span class="chip sel">الأول الأساسي ✓</span>
+          <span class="chip sel">الثاني الأساسي ✓</span>
+          <span class="chip sel">الثالث الأساسي ✓</span>
+          <span class="chip sel">الرابع الأساسي ✓</span>
+          <span class="chip">الخامس الأساسي</span>
+          <span class="chip">السادس الأساسي</span>
+          <span class="chip">السابع الأساسي</span>
+          <span class="chip">الثامن الأساسي</span>
+          <span class="chip">التاسع</span>
+          <span class="chip">العاشر</span>
+          <span class="chip">الحادي عشر</span>
+          <span class="chip">الثاني عشر</span>
+        </div>
+      </div>
+      <div class="tip">💡 تلميح: «اختيار الكل» ينشئ البنية لكل المستويات دفعة واحدة — مفيد عند افتتاح مدرسة جديدة.</div>
+    </div>
+    <div class="wizfoot">
+      <button class="btn ghost">إلغاء</button>
+      <button class="btn primary">التالي ←</button>
+    </div>
+  </div>
+  <div class="notes">
+    <span><b>①</b> افتراضي ذكي = العام القادم (لا تفكير، لا كتابة).</span>
+    <span><b>②</b> رقاقات متعددة الاختيار: نقرة لكل صف، أو «اختيار الكل» بنقرة واحدة.</span>
+  </div>
+
+  <!-- ================= FRAME 2 ================= -->
+  <div class="frame-tag"><span class="num">02</span><span class="ttl">الخطوة ٢ — الشعب والحد الأقصى</span><span class="sub">البنية جاهزة، التعديل بأزرار</span></div>
+  <div class="frame">
+    <div class="appbar">
+      <div class="brand"><span class="logo">🎓</span>مدرسة الرواد<span class="crumb">/ المعالج: إنشاء الصفوف والشعب</span></div>
+      <div class="appbar-l">🔔<span class="uav">ع</span></div>
+    </div>
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">إنشاء الصفوف والشعب</div>
+        <div class="wizsub">العام الدراسي 2026/2027 · 4 مستويات محددة</div>
+      </div>
+      <div class="wsteps">
+        <div class="wstep done"><span class="d">✓</span>العام والمستوى</div><div class="wline"></div>
+        <div class="wstep on"><span class="d">٢</span>الشعب والحد الأقصى</div><div class="wline"></div>
+        <div class="wstep"><span class="d">٣</span>مربّو الصف</div><div class="wline"></div>
+        <div class="wstep"><span class="d">٤</span>المراجعة</div>
+      </div>
+    </div>
+    <div class="wizbody">
+      <div class="card">
+        <div class="card-h">مصدر البنية <span class="nb">1</span></div>
+        <div class="srcs">
+          <div class="src">
+            <b>📦 قالب جاهز</b>
+            <p>بنية قياسية تحددها الإدارة لكل مرحلة دراسية</p>
+            <div class="pick">المرحلة: أساسية — 3 شعب ▾</div>
+          </div>
+          <div class="src sel">
+            <span class="rec">موصى به</span>
+            <b>📋 نسخ من العام الماضي</b>
+            <p>بنية 2025/2026 جاهزة بالكامل وقابلة للتعديل</p>
+          </div>
+          <div class="src">
+            <b>✍️ من الصفر</b>
+            <p>تحديد عدد الشعب يدويًا لكل صف (أزرار + / −)</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="banner">
+        <span><b>اقتراح النظام:</b> الأول والثاني والثالث ×3 شعب، والرابع ×4 شعب (وفق تسجيل 2025/2026).</span>
+        <button class="btn tiny outline-p">اعتماد الاقتراح</button>
+      </div>
+
+      <div class="card">
+        <div class="card-h">الشعب لكل صف <span class="nb">2</span></div>
+        <div class="gsec">
+          <div class="gname">الأول الأساسي <small>تسجيل متوقع: 104 تلاميذ</small></div>
+          <div class="chips">
+            <span class="chip sec">أ ✕</span><span class="chip sec">ب ✕</span><span class="chip sec">ج ✕</span><span class="chip add">＋</span>
+          </div>
+          <div class="gmax">الحد الأقصى <span class="num"><button>＋</button><b>35</b><button>−</button></span></div>
+        </div>
+        <div class="gsec">
+          <div class="gname">الثاني الأساسي <small>تسجيل متوقع: 98 تلميذًا</small></div>
+          <div class="chips">
+            <span class="chip sec">أ ✕</span><span class="chip sec">ب ✕</span><span class="chip sec">ج ✕</span><span class="chip add">＋</span>
+          </div>
+          <div class="gmax">الحد الأقصى <span class="num"><button>＋</button><b>35</b><button>−</button></span></div>
+        </div>
+        <div class="gsec">
+          <div class="gname">الثالث الأساسي <small>تسجيل متوقع: 110 تلاميذ</small></div>
+          <div class="chips">
+            <span class="chip sec">أ ✕</span><span class="chip sec">ب ✕</span><span class="chip sec">ج ✕</span><span class="chip add">＋</span>
+          </div>
+          <div class="gmax">الحد الأقصى <span class="num"><button>＋</button><b>35</b><button>−</button></span></div>
+        </div>
+        <div class="gsec">
+          <div class="gname">الرابع الأساسي <small>تسجيل متوقع: 118 تلميذًا</small></div>
+          <div class="chips">
+            <span class="chip sec">أ ✕</span><span class="chip sec">ب ✕</span><span class="chip sec">ج ✕</span><span class="chip sec">د ✕</span><span class="chip add">＋</span>
+          </div>
+          <div class="gmax">الحد الأقصى <span class="num"><button>＋</button><b>35</b><button>−</button></span></div>
+        </div>
+      </div>
+
+      <div class="globalmax">
+        <span>الحد الأقصى الافتراضي للتلاميد في الشعبة <span class="nb">3</span></span>
+        <span class="num"><button>＋</button><b>35</b><button>−</button></span>
+        <button class="btn tiny" style="background:#fff;color:var(--p2)">تطبيق على جميع الشعب</button>
+      </div>
+    </div>
+    <div class="wizfoot">
+      <button class="btn ghost">→ رجوع</button>
+      <div class="footnote">سيتم إنشاء <b style="color:var(--p2)">13 شعبة</b> في 4 صفوف</div>
+      <button class="btn primary">التالي ←</button>
+    </div>
+  </div>
+  <div class="notes">
+    <span><b>①</b> «نسخ من العام الماضي» = بنية كاملة بصفر إدخال (وهو الافتتاحي الموصى به).</span>
+    <span><b>②</b> أسماء الشعب (أ، ب، ج، د) تلقائية — الإضافة والحذف بزر + / − فقط.</span>
+    <span><b>③</b> الحد الأقصى بعدّاد أزرار: قيمة عامة + «تطبيق على الكل» بنقرة، مع تجاوز اختياري لكل صف.</span>
+  </div>
+
+  <!-- ================= FRAME 3 ================= -->
+  <div class="frame-tag"><span class="num">03</span><span class="ttl">الخطوة ٣ — تعيين مربّي الصف</span><span class="sub">بطاقات معلمين + تعيين جماعي</span></div>
+  <div class="frame">
+    <div class="appbar">
+      <div class="brand"><span class="logo">🎓</span>مدرسة الرواد<span class="crumb">/ المعالج: إنشاء الصفوف والشعب</span></div>
+      <div class="appbar-l">🔔<span class="uav">ع</span></div>
+    </div>
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">إنشاء الصفوف والشعب</div>
+        <div class="wizsub">العام الدراسي 2026/2027 · 13 شعبة بانتظار مربّي صف</div>
+      </div>
+      <div class="wsteps">
+        <div class="wstep done"><span class="d">✓</span>العام والمستوى</div><div class="wline"></div>
+        <div class="wstep done"><span class="d">✓</span>الشعب والحد الأقصى</div><div class="wline"></div>
+        <div class="wstep on"><span class="d">٣</span>مربّو الصف</div><div class="wline"></div>
+        <div class="wstep"><span class="d">٤</span>المراجعة</div>
+      </div>
+    </div>
+    <div class="wizbody">
+      <div class="tlayout">
+        <aside class="card">
+          <div class="card-h">المعلمون <span class="nb">1</span></div>
+          <div class="chips" style="margin-bottom:12px">
+            <span class="chip sm sel">الكل (13)</span>
+            <span class="chip sm">لغة عربية</span>
+            <span class="chip sm">رياضيات</span>
+            <span class="chip sm">علوم</span>
+            <span class="chip sm">إنجليزية</span>
+          </div>
+          <div class="tcard sel">
+            <div class="tav">لخ</div>
+            <div><b>ليلى خالد</b><small>3 شعب · لغة عربية</small></div>
+            <span class="tcheck">✓</span>
+          </div>
+          <div class="tcard">
+            <div class="tav">أس</div>
+            <div><b>أحمد سمير</b><small>3 شعب · رياضيات</small></div>
+          </div>
+          <div class="tcard">
+            <div class="tav">سم</div>
+            <div><b>سارة محمد</b><small>2 شعبة · لغة إنجليزية</small></div>
+          </div>
+          <div class="tcard">
+            <div class="tav">عح</div>
+            <div><b>عمر حسن</b><small>3 شعب · علوم</small></div>
+          </div>
+          <div class="tcard">
+            <div class="tav">نف</div>
+            <div><b>نورة فؤاد</b><small>2 شعبة · دراسات إسلامية</small></div>
+          </div>
+          <div class="tcard">
+            <div class="tav">خي</div>
+            <div><b>خالد يوسف</b><small>4 شعب · حاسوب <span class="warnload">⚠ فوق الموصى به (3)</span></small></div>
+          </div>
+          <div class="smore" style="text-align:right">… 7 معلمين آخرين (أو بحث: «اسم المعلم»)</div>
+        </aside>
+
+        <div class="card">
+          <div class="shead">
+            <div class="card-h" style="margin:0">الشعب <span class="nb">2</span></div>
+            <div class="pbar"><i></i></div>
+            <span class="progresspill">9/13 معيّن</span>
+          </div>
+
+          <div class="srow"><span>الأول الأساسي / أ</span><span class="tchip">أحمد سمير ✓</span></div>
+          <div class="srow"><span>الأول الأساسي / ب</span><span class="tchip">سارة محمد ✓</span></div>
+          <div class="srow"><span>الأول الأساسي / ج</span><span class="tchip">نورة فؤاد ✓</span></div>
+          <div class="srow"><span>الثاني الأساسي / أ</span><button class="btn tiny outline-p">تعيين</button></div>
+          <div class="srow sel"><span>الثاني الأساسي / ب</span><span class="assigning">✦ جارٍ التعيين: ليلى خالد</span></div>
+          <div class="srow"><span>الثالث الأساسي / أ</span><span class="tchip">عمر حسن ✓</span></div>
+          <div class="srow"><span>الرابع الأساسي / أ</span><button class="btn tiny outline-p">تعيين</button></div>
+          <div class="smore">… 6 شعب أخرى</div>
+
+          <div class="bulk">
+            <span><input type="checkbox" style="accent-color:var(--p);width:16px;height:16px"/> تحديد الكل (13)</span>
+            <span>تعيين معلّم واحد للمحددة: <span class="pick">ليلى خالد ▾</span></span>
+            <button class="btn tiny primary">تعيين <span class="nb" style="background:#fff;color:var(--p)">3</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="wizfoot">
+      <button class="btn ghost">→ رجوع</button>
+      <div class="footnote">لا يمكن المتابعة قبل تعيين الجميع (أو «إنشاء بدون مربّي» مع تحذير)</div>
+      <button class="btn primary" style="opacity:.55">التالي ← (يُفعَّل عند اكتمال 13/13)</button>
+    </div>
+  </div>
+  <div class="notes">
+    <span><b>①</b> بطاقات معلمين مع عدّاد الأعباء فوريًا — <b>فلاتر بدلًا من الكتابة</b>، والبحث نصي اختياري فقط للقوائم الطويلة.</span>
+    <span><b>②</b> تعيين فردي: اختر الشعبة ثم انقر بطاقة المعلّم. بديل متقدم: سحب بطاقة المعلّم وإفلاتها على الشعبة.</span>
+    <span><b>③</b> تعيين جماعي: تحديد شعب + اختيار معلّم واحد + زر واحد.</span>
+  </div>
+
+  <!-- ================= FRAME 4 ================= -->
+  <div class="frame-tag"><span class="num">04</span><span class="ttl">الخطوة ٤ — المراجعة والتأكيد</span><span class="sub">فحص الصحة قبل الإنشاء</span></div>
+  <div class="frame">
+    <div class="appbar">
+      <div class="brand"><span class="logo">🎓</span>مدرسة الرواد<span class="crumb">/ المعالج: إنشاء الصفوف والشعب</span></div>
+      <div class="appbar-l">🔔<span class="uav">ع</span></div>
+    </div>
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">إنشاء الصفوف والشعب</div>
+        <div class="wizsub">راجع الملخص — لن يُنشأ أي شيء قبل زرك النهائي</div>
+      </div>
+      <div class="wsteps">
+        <div class="wstep done"><span class="d">✓</span>العام والمستوى</div><div class="wline"></div>
+        <div class="wstep done"><span class="d">✓</span>الشعب والحد الأقصى</div><div class="wline"></div>
+        <div class="wstep done"><span class="d">✓</span>مربّو الصف</div><div class="wline"></div>
+        <div class="wstep on"><span class="d">٤</span>المراجعة</div>
+      </div>
+    </div>
+    <div class="wizbody">
+      <div class="valid">
+        <div class="v ok"><span>✅</span><span>تم تعيين مربّي صف لكل الشعب — <b>13/13</b></span></div>
+        <div class="v ok"><span>✅</span><span>تم تحديد الحد الأقصى للتلاميد (<b>35</b>) لكل شعبة</span></div>
+        <div class="v warn"><span>⚠️</span><span>خالد يوسف معيّن على <b>4 شعب</b> (الموصى به ≤ 3) — <a href="#">عرض بدائل قريبة</a></span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">الملخص (4 مستويات · 13 شعبة)</div>
+        <table class="tbl">
+          <tr><th>الصف</th><th>الشعبة</th><th>مربّي الصف</th><th>الحد الأقصى</th><th></th></tr>
+          <tr><td>الأول الأساسي</td><td>أ</td><td>أحمد سمير</td><td>35</td><td><a class="edit" href="#">تعديل</a></td></tr>
+          <tr><td>الأول الأساسي</td><td>ب</td><td>سارة محمد</td><td>35</td><td><a class="edit" href="#">تعديل</a></td></tr>
+          <tr><td>الثاني الأساسي</td><td>أ</td><td>ليلى خالد</td><td>35</td><td><a class="edit" href="#">تعديل</a></td></tr>
+          <tr><td>الثاني الأساسي</td><td>ب</td><td>عمر حسن</td><td>35</td><td><a class="edit" href="#">تعديل</a></td></tr>
+          <tr><td>الثالث الأساسي</td><td>أ</td><td>نورة فؤاد</td><td>35</td><td><a class="edit" href="#">تعديل</a></td></tr>
+          <tr><td>الرابع الأساسي</td><td>أ</td><td>خالد يوسف ⚠</td><td>35</td><td><a class="edit" href="#">تعديل</a></td></tr>
+          <tr class="more-row"><td colspan="5">… 7 صفوف إضافية (عرض الكل)</td></tr>
+        </table>
+        <p class="hint">رابط «تعديل» في أي سطر يعيدك مباشرة إلى الخطوة المعنية (الشعب ← الخطوة ٢، المعلم ← الخطوة ٣) دون فقدان باقي المدخلات.</p>
+      </div>
+    </div>
+    <div class="wizfoot">
+      <button class="btn ghost">→ رجوع</button>
+      <button class="btn primary">✓ تأكيد وإنشاء (13 شعبة)</button>
+    </div>
+  </div>
+  <div class="notes">
+    <span><b>①</b> الفحوص تظهر قبل التأكيد: اكتمال التعيينات، اكتمال الحد الأقصى، تنبيهات الأعباء (غير حاسمة).</span>
+    <span><b>②</b> «تعديل» يقفز إلى الخطوة المطلوبة فقط — لا إعادة من البداية.</span>
+  </div>
+
+  <!-- ================= FRAME 5 ================= -->
+  <div class="frame-tag"><span class="num">05</span><span class="ttl">النجاح — العودة إلى صفحة الإدارة</span><span class="sub">الرسالة + الشعب الجديدة ظاهرة فورًا</span></div>
+  <div class="frame">
+    <div class="appbar">
+      <div class="brand"><span class="logo">🎓</span>مدرسة الرواد<span class="crumb">/ الإعدادات / الصفوف والشعب</span></div>
+      <div class="appbar-l">🔔<span class="uav">ع</span></div>
+    </div>
+    <div class="toast">
+      <span>✅ تم إنشاء <b>13 شعبة</b> في <b>4 صفوف</b> وتعيين <b>13 مربّي صف</b> للعام 2026/2027</span>
+      <button>تراجع (10 ثوانٍ)</button>
+    </div>
+    <div class="dashhead" style="padding-top:10px">
+      <div>
+        <h2>الصفوف والشعب</h2>
+        <div class="sub">العام الدراسي 2026/2027</div>
+      </div>
+      <button class="btn primary">＋ إنشاء صفوف وشعب إضافية</button>
+    </div>
+    <div class="stats">
+      <span class="stat"><b>4</b> مستويات</span>
+      <span class="stat"><b>13</b> شعبة</span>
+      <span class="stat"><b>13/13</b> مربّو صف معيّنون</span>
+      <span class="stat"><b>35</b> الحد الأقصى الموحد</span>
+    </div>
+    <div class="dash-body">
+      <table class="tbl">
+        <tr><th>الصف</th><th>الشعبة</th><th>مربّي الصف</th><th>الحد الأقصى</th><th>الحالة</th></tr>
+        <tr class="new"><td>الأول الأساسي</td><td>أ <span class="newbadge">جديد</span></td><td>أحمد سمير</td><td>35</td><td>نشطة</td></tr>
+        <tr class="new"><td>الأول الأساسي</td><td>ب <span class="newbadge">جديد</span></td><td>سارة محمد</td><td>35</td><td>نشطة</td></tr>
+        <tr class="new"><td>الأول الأساسي</td><td>ج <span class="newbadge">جديد</span></td><td>نورة فؤاد</td><td>35</td><td>نشطة</td></tr>
+        <tr class="new"><td>الثاني الأساسي</td><td>أ <span class="newbadge">جديد</span></td><td>ليلى خالد</td><td>35</td><td>نشطة</td></tr>
+        <tr class="more-row"><td colspan="5">… 9 صفوف إضافية</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="notes">
+    <span><b>①</b> رسالة نجاح ملخّصة + زر «تراجع» مؤقت (10 ثوانٍ) للإصلاح السريع.</span>
+    <span><b>②</b> الشعب الجديدة تظهر في الجدول فورًا مع شارة «جديد» — تأكيد بصري مباشر.</span>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="why" class="sec">
+  <h2>٣) لماذا هذا الحل هو الأفضل؟</h2>
+  <p class="sec-sub">مطابقة مباشرة لمتطلبات السؤال: عملية، سهلة، على شكل معالج، ودون إدخال متكرر من لوحة المفاتيح.</p>
+  <div class="cards2">
+    <div class="wcard"><b>🧭 معالج من 4 خطوات بدل نموذج طويل</b><p>كل خطوة مهمة واحدة (ما الصفوف؟ كم شعبة؟ من المعلّم؟ مراجعة). مؤشر تقدم دائم، وإمكانية الرجوع دون فقدان أي مدخلات. يقلل الخطأ والتخلي عن النموذج.</p></div>
+    <div class="wcard"><b>📋 «نسخ من العام الماضي» = صفر كتابة</b><p>المشكلة الأوسع في المدارس: البنية تتكرر سنويًا بتعديلات طفيفة. استيراد بنية 2025/2026 بنقرة واحدة يحوّل العملية من «إنشاء» إلى «مراجعة وتعديل».</p></div>
+    <div class="wcard"><b>🔢 عدّادات للحد الأقصى + «تطبيق على الكل»</b><p>الأرقام لا تُكتب: أزرار − / + فقط. قيمة واحدة عامة تُطبَّق على كل الشعب بنقرة، مع حق تجاوز على مستوى كل صف أو شعبة عند الحاجة (مثل شعبة موهبة أصغر).</p></div>
+    <div class="wcard"><b>👥 بطاقات معلمين + تعيين جماعي</b><p>لا كتابة أسماء: فلاتر (تخصص/مرحلة) وبطاقات قابلة للنقر، مع عدّاد أعباء حي (3 شعب لكل معلم) وتنبيه للتحميل الزائد. «تعيين معلّم واحد لمجموعة شعب» يغطي الحالات المتماثلة.</p></div>
+    <div class="wcard"><b>🎯 أسماء الشعب آلية</b><p>أ (ب، ج، د…) تولَّد تلقائيًا مع كل إضافة — لا يوجد حقل «اسم الشعبة» قابل للكتابة إطلاقًا، فلا تكرار ولا أخطاء إملائية ولا تسميات متضاربة.</p></div>
+    <div class="wcard"><b>✅ مراجعة وفحص ذرّي</b><p>خطوة مراجعة تعرض كل شيء في جدول واحد مع فحوص (اكتمال، حد أقصى، أعباء)، و«إنشاء» عملية ذرّية: إما ينجح كل شيء أو لا يُنشأ شيء — ولا «تراجع» فوري. النتيجة: لا بيانات ناقصة تتسلل إلى النظام.</p></div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="spec" class="sec">
+  <h2>٤) مواصفات التصميم + النقل إلى فيجما</h2>
+
+  <div class="cards2">
+    <div class="wcard">
+      <b>🎨 نظام الألوان (Design Tokens)</b>
+      <table class="kv" style="margin-top:10px">
+        <tr><td>الأصلي Primary</td><td><span class="swatch" style="background:#4F46E5"></span> #4F46E5 — أزرار، اختيار، روابط</td></tr>
+        <tr><td>النجاح Success</td><td><span class="swatch" style="background:#059669"></span> #059669 — اكتمال، تعيين ناجح، توست</td></tr>
+        <tr><td>تحذير Warning</td><td><span class="swatch" style="background:#F59E0B"></span> #F59E0B — أعباء زائدة، تنبيهات</td></tr>
+        <tr><td>خطأ Error</td><td><span class="swatch" style="background:#DC2626"></span> #DC2626 — نقص حاسم</td></tr>
+        <tr><td>النص / الثانوي</td><td><span class="swatch" style="background:#111827"></span> #111827 · <span class="swatch" style="background:#6B7280"></span> #6B7280</td></tr>
+        <tr><td>الخلفيات</td><td>صفحة #EEF1F6 · بطاقة #FFFFFF · معالج #F8FAFC</td></tr>
+      </table>
+    </div>
+    <div class="wcard">
+      <b>📏 الخطوط والمسافات</b>
+      <table class="kv" style="margin-top:10px">
+        <tr><td>الخط</td><td>Segoe UI / Tahoma / Noto Naskh Arabic (نظامي، RTL)</td></tr>
+        <tr><td>مقاسات</td><td>عنوان إطار 19 · عناوين بطاقات 14.5 · جسم 13–14 · مساعدة 12.5</td></tr>
+        <tr><td>الشبكة</td><td>8px grid — بادينغ البطاقات 18px، الفجوات 8/12/14px</td></tr>
+        <tr><td>الزوايا</td><td>بطاقات 14px · أزرار 10px · رقاقات 999px (حبة)</td></tr>
+        <tr><td>الحدود</td><td>1.5px #E5E7EB، الحالة المحددة: 3px glow بنفسجي</td></tr>
+      </table>
+    </div>
+    <div class="wcard">
+      <b>🧩 المكونات (Components)</b>
+      <table class="kv" style="margin-top:10px">
+        <tr><td>رقاقة Chip</td><td>عادية / محددة / معطّلة / إضافة (+) — اختيار متعدد</td></tr>
+        <tr><td>عدّاد Stepper</td><td>− القيمة + · خطوة 1 (أو 5) · حد أدنى 1</td></tr>
+        <tr><td>بطاقة معلم</td><td>صورة رمزية + الاسم + الأعباء + تنبيه ⚠ / حالة محددة ✓</td></tr>
+        <tr><td>سطر شعبة</td><td>الصف/الشعبة + (معلّم معيّن ✓ | زر تعيين | جارٍ التعيين)</td></tr>
+        <tr><td>مؤشر خطوات</td><td>4 خطوات: قادمة / نشطة / منجزة (✓)</td></tr>
+        <tr><td>توست / فحوص</td><td>رسالة نجاح + تراجع · قائمة فحوص ✅⚠️</td></tr>
+      </table>
+    </div>
+    <div class="wcard">
+      <b>🛡️ قواعد التحقق (Validation)</b>
+      <table class="kv" style="margin-top:10px">
+        <tr><td>متطلبات الإكمال</td><td>≥ صف واحد · ≥ شعبة لكل صف · حد أقصى لكل شعبة · معلّم لكل شعبة (أو اختيار صريح «بدون مربّي» مع تحذير)</td></tr>
+        <tr><td>تعذّر المتابعة</td><td>زر «التالي» معطّل حتى اكتمال شروط الخطوة الحالية</td></tr>
+        <tr><td>تنبيهات غير حاسمة</td><td>أعباء معلم &gt; الحد الموصى به · عدد الشعب × الحد &lt; التسجيل المتوقع</td></tr>
+        <tr><td>تعارض وجودي</td><td>إن وُجدت شعبة مطابقة في نفس العام: تحذير + خيار «تخطي الموجودة»</td></tr>
+        <tr><td>الإنشاء</td><td>عملية ذرّية واحدة + تراجع 10 ثوانٍ من التوست + إدارة لاحقة من صفحة الإدارة</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="wcard" style="margin-top:14px">
+    <b>➡️ كيف تنقل هذا الملف إلى فيجما؟</b>
+    <table class="kv" style="margin-top:10px">
+      <tr><td>الخيار أ (موصى به)</td><td>افتح إضافة <b>html.to.design</b> في فيجما والصق محتوى <code>wizard-mockup.html</code> — يتحول إلى إطارات فيجما <b>قابلة للتحرير</b> (نصوص وشرائح وألوان منفصلة). ثم اقطع كل إطار (Frame 00–05) كـ Frame مستقل باسمه.</td></tr>
+      <tr><td>الخيار ب</td><td>التقط صورة شاشة لكل إطار (Ctrl+Shift+S لكل Frame)، ثم في فيجما: File → Place Image كقاعدة خلفية، وسمِّ كل Frame. مناسب للمراجعة السريعة.</td></tr>
+      <tr><td>الخيار ج</td><td>إعادة البناء يدويًا في فيجما اعتمادًا على Tokens الموضحة أعلاه (ألوان/مسافات/مكونات) — الأبطأ لكنه الأنظف لمكتبة مكوّنات دائمة.</td></tr>
+      <tr><td>نصيحة</td><td>أنشئ في فيجما صفحة «Components» تحتوي: Chip، Stepper، Teacher Card، Section Row، Step Indicator، Toast — ثم اجمع الشاشات من هذه المكوّنات.</td></tr>
+    </table>
+  </div>
+
+  <div class="wcard" style="margin-top:14px">
+    <b>📁 الملفات المرفقة</b>
+    <div class="filelist" style="margin-top:10px">
+      <div><code>wizard-mockup.html</code> — هذا الملف: المخطط + الشاشات الست + ملخص المواصفات (يفتح في المتصفح مباشرة)</div>
+      <div><code>spec.md</code> — المواصفات الكاملة: السيناريو، تفاصيل كل شاشة، الحالات الحدّية، نموذج البيانات، المقاييس</div>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

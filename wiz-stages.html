@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>المستويات الدراسية لكل مسار</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<div class="topbar">
+  <a class="home" href="setup.html">→ المسار المؤهل</a>
+  <span class="t">🎚️ المستويات الدراسية</span>
+  <span class="d">الخطوة 2 من 5 — لكل مسار بنية مستقل</span>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+if(!db.school){
+  $('#app').innerHTML=`
+  <div class="card" style="max-width:620px;margin:50px auto;text-align:center">
+    <div style="font-size:46px">🔒</div>
+    <h2 style="font-size:19px;margin-top:10px">لم تُحدَّد المسارات بعد</h2>
+    <p class="hint" style="margin:10px 0 20px">المستويات تُعرّف لكل مسار على حدة — ابدأ أولًا من «بيانات المدرسة» لتحديد المسارات (وطني / دولي / بريطاني).</p>
+    <a class="btn primary" href="wiz-school.html" style="text-decoration:none">← بدء من بيانات المدرسة</a>
+  </div>`;
+  document.querySelector('.topbar .t').textContent='🎚️ المستويات الدراسية — مطلوب: بيانات المدرسة';
+  throw new Error('guard');
+}
+
+const pids=db.school.paths;
+let selPath=pids[0];
+let addingStage=false, addingLevel=-1;
+
+function stagesOf(pid){
+  if(!db.paths[pid]) db.paths[pid]={stages:[]};
+  return db.paths[pid].stages;
+}
+function persist(){saveDB(db);render();}
+
+function applyPreset(){
+  askConfirm(`اعتماد قالب ${PATHS_META[selPath].name}`,
+    'سيستبدل القالب كل المراحل والمستويات الحالية لهذا المسار.',()=>{
+      db.paths[selPath]={stages:clone(STAGE_PRESETS[selPath])};
+      persist();
+      toast('تم اعتماد القالب: '+STAGE_PRESETS[selPath].reduce((a,s)=>a+s.levels.length,0)+' مستوى',{type:'ok'});
+    },'اعتماد',true);
+}
+function clearAll(){
+  askConfirm('مسح مستويات المسار','سيتم حذف كل مراحل ومستويات «'+PATHS_META[selPath].name+'».',()=>{
+    db.paths[selPath]={stages:[]};persist();toast('تم المسح');
+  },'مسح',true);
+}
+function addStage(name){
+  name=(name||'').trim();
+  if(!name){toast('اكتب اسم المرحلة أولًا',{type:'warn'});return;}
+  stagesOf(selPath).push({name,levels:[]});
+  addingStage=false;persist();
+}
+function removeStage(si){
+  const st=stagesOf(selPath)[si];
+  askConfirm('حذف المرحلة',`سيتم حذف «${st.name}» و${st.levels.length} مستوياتها.`,()=>{
+    stagesOf(selPath).splice(si,1);persist();
+  },'حذف',true);
+}
+function addLevel(si,name){
+  name=(name||'').trim();
+  if(!name){toast('اكتب اسم المستوى أولًا',{type:'warn'});return;}
+  stagesOf(selPath)[si].levels.push(name);
+  addingLevel=-1;persist();
+}
+function removeLevel(si,li){
+  stagesOf(selPath)[si].levels.splice(li,1);persist();
+}
+
+function render(){
+  const st=stagesOf(selPath);
+  const groups=st.map((g,si)=>`
+    <div class="stage-group">
+      <div class="sg-head">
+        <span class="sg-name">${esc(g.name)}</span>
+        <span class="sg-count">${g.levels.length} مستوى</span>
+        <span style="margin-inline-start:auto;display:flex;gap:8px">
+          <button class="btn tiny ghost" onclick="addingLevel=${si};addingStage=false;render()">＋ مستوى</button>
+          <button class="btn tiny ghost" onclick="removeStage(${si})">حذف المرحلة</button>
+        </span>
+      </div>
+      <div class="chips">
+        ${g.levels.map((lv,li)=>`<span class="chip sec">${esc(lv)} <span class="x" onclick="removeLevel(${si},${li})">✕</span></span>`).join('')}
+      </div>
+      ${addingLevel===si?`<div class="inline-row">
+        <input type="text" id="newlv" placeholder="اسم المستوى الجديد (مثال: الأول الأساسي)" onkeydown="if(event.key==='Enter')addLevel(${si},document.getElementById('newlv').value)">
+        <button class="btn tiny primary" onclick="addLevel(${si},document.getElementById('newlv').value)">إضافة</button>
+      </div>`:''}
+    </div>`).join('')||'<div class="warnbox">لا توجد مراحل لهذا المسار بعد — ابدأ من القالب أو أضف مرحلة جديدة.</div>';
+
+  const counts=pids.map(p=>`${PATHS_META[p].flag} ${levelCountOfPath(db,p)}`).join(' · ');
+
+  $('#app').innerHTML=`${appbar(db.school.name,'/ الإعداد / المستويات')}
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">المستويات الدراسية لكل مسار</div>
+        <div class="wizsub">التحفظ تلقائي عند كل تغيير · ${counts} مستوى</div>
+      </div>
+      <div class="chips">
+        ${pids.map(p=>`<span class="chip ${p===selPath?'sel':''}" onclick="selPath='${p}';render()">${PATHS_META[p].flag} ${PATHS_META[p].name} (${levelCountOfPath(db,p)})</span>`).join('')}
+      </div>
+    </div>
+    <div class="wizbody">
+      <div class="card">
+        <div class="card-h">مصدر البنية لـ«${PATHS_META[selPath].name}»</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn outline-p" onclick="applyPreset()">📋 اعتماد قالب ${PATHS_META[selPath].name} النظامي</button>
+          <button class="btn ghost" onclick="clearAll()">مسح الكل</button>
+        </div>
+        <p class="hint">القوالب: ${STAGE_PRESETS[selPath].map(s=>s.name).join(' · ')}</p>
+      </div>
+      ${groups}
+      <div class="inline-row" style="border-top:1px dashed var(--line);padding-top:14px">
+        ${addingStage
+          ?`<input type="text" id="newst" placeholder="اسم المرحلة الجديدة" onkeydown="if(event.key==='Enter')addStage(document.getElementById('newst').value)">
+            <button class="btn tiny primary" onclick="addStage(document.getElementById('newst').value)">إضافة المرحلة</button>`
+          :`<button class="btn outline-p" onclick="addingStage=true;addingLevel=-1;render()">＋ إضافة مرحلة جديدة</button>`}
+      </div>
+    </div>
+    <div class="wizfoot">
+      <a class="btn ghost" href="setup.html" style="text-decoration:none">→ لوحة المسار المؤهل</a>
+      <div class="footnote">التالي الموصى به: المواد الدراسية ← المعلمون</div>
+      <a class="btn primary" href="wiz-subjects.html" style="text-decoration:none">التالي: المواد الدراسية ←</a>
+    </div>`;
+}
+render();
+</script>
+</body>
+</html>

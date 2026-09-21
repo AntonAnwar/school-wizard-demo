@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>بيانات الطلاب</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<div class="topbar">
+  <a class="home" href="setup.html">→ المسار المؤهل</a>
+  <span class="t">🎒 الطلاب</span>
+  <span class="d">الخطوة 7 من 8 — التسجيل بالمسار والمستوى وربط وليّ الأمر</span>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+if(!db.school){
+  $('#app').innerHTML=`
+  <div class="card" style="max-width:620px;margin:50px auto;text-align:center">
+    <div style="font-size:46px">🔒</div>
+    <h2 style="font-size:19px;margin-top:10px">لم تُنشأ المدرسة بعد</h2>
+    <p class="hint" style="margin:10px 0 20px">ابدأ أولًا من «بيانات المدرسة» ثم «المستويات».</p>
+    <a class="btn primary" href="wiz-school.html" style="text-decoration:none">← بدء من بيانات المدرسة</a>
+  </div>`;
+  throw new Error('guard');
+}
+if(!db.students)db.students=[];
+if(!db.parents)db.parents=[];
+const pids=db.school.paths;
+const LS_T='wiz-students-v1';
+
+let WizForm,editingId;
+function defaultForm(){
+  const lv=flatLevels(db);
+  return {name:'',gender:'m',pathId:pids[0],gradeId:lv[0]?lv[0].id:'',parentId:''};
+}
+try{
+  const f=JSON.parse(store.get(LS_T));
+  WizForm=f&&f.form?f.form:defaultForm();
+  editingId=f&&f.editingId?f.editingId:null;
+  if(editingId&&!db.students.find(s=>s.id===editingId))editingId=null;
+}catch(e){WizForm=defaultForm();editingId=null;}
+function saveF(){store.set(LS_T,JSON.stringify({WizForm:WizForm,editingId}));}
+function setF(k,v){WizForm[k]=v;if(k==='pathId')WizForm.gradeId=(flatLevels(db).find(g=>g.pathId===v)||{}).id||'';saveF();render();}
+
+function submit(){
+  const name=WizForm.name.trim();
+  if(!name){toast('اسم الطالب مطلوب',{type:'warn'});return;}
+  if(!WizForm.gradeId){toast('اختر المستوى',{type:'warn'});return;}
+  const rec={name,gender:WizForm.gender,pathId:WizForm.pathId,gradeId:WizForm.gradeId,parentId:WizForm.parentId||null,sectionKey:null};
+  if(editingId){
+    Object.assign(db.students.find(s=>s.id===editingId),rec);
+    toast('تم تحديث بيانات '+name,{type:'ok'});
+  }else{
+    db.students.push({id:'stu'+Date.now().toString(36),...rec});
+    toast('تم تسجيل '+name,{type:'ok'});
+  }
+  editingId=null;WizForm=defaultForm();
+  saveDB(db);saveF();render();
+}
+function startEdit(id){
+  const s=db.students.find(s=>s.id===id);
+  WizForm={name:s.name,gender:s.gender,pathId:s.pathId,gradeId:s.gradeId,parentId:s.parentId||''};
+  editingId=id;saveF();render();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelEdit(){editingId=null;WizForm=defaultForm();saveF();render();}
+function delStudent(id){
+  const s=db.students.find(s=>s.id===id);
+  askConfirm('حذف الطالب',`سيتم حذف «${s.name}» من سجل المدرسة.`,()=>{
+    db.students=db.students.filter(x=>x.id!==id);
+    if(editingId===id){editingId=null;WizForm=defaultForm();}
+    saveDB(db);saveF();render();toast('تم الحذف');
+  },'حذف',true);
+}
+function addSample(n){
+  const FN_M=['محمد','أحمد','يوسف','عمر','فهد','خالد','سعيد','طارق','هيثم','زياد','بلال','راكان'];
+  const FN_F=['لينا','جود','ريم','نورة','سارة','دانا','لانا','هبة','رند','شهد','ميس','آية'];
+  const LN=['الخطيب','الفرج','الدويري','المليحي','السمرة','بني خالد'];
+  const lvs=flatLevels(db);
+  if(!lvs.length){toast('لا مستويات معرّفة',{type:'warn'});return;}
+  let c=0;
+  for(let i=0;i<n;i++){
+    const lv=lvs[(i*3)%lvs.length];
+    const f=i%2;
+    const nm=(f?FN_F:FN_M)[(i*5)%12]+' '+LN[(i*7)%6];
+    if(db.students.find(s=>s.name===nm))continue;
+    db.students.push({id:'stu'+Date.now().toString(36)+'_'+i,name:nm,gender:f?'f':'m',pathId:lv.pathId,gradeId:lv.id,
+      parentId:db.parents.length?db.parents[i%db.parents.length].id:null,sectionKey:null});
+    c++;
+  }
+  saveDB(db);render();toast('تم تسجيل '+c+' طالبًا تجريبيًا',{type:'ok'});
+}
+
+let q='',fPath='all';
+function pName(id){if(!id)return '— بدون —';const p=db.parents.find(p=>p.id===id);return p?p.name:'— بدون —';}
+function secLabel(s){return s.sectionKey?keyLetter(s.sectionKey):'غير موزّع';}
+
+function render(){
+  const lvsAll=flatLevels(db);
+  const lvs=lvsAll.filter(g=>g.pathId===WizForm.pathId);
+  const groups={};
+  lvs.forEach(g=>{(groups[g.stage]=groups[g.stage]||[]).push(g);});
+  const total=db.students.length;
+  const un=db.students.filter(s=>!s.sectionKey).length;
+  $('#app').innerHTML=`${appbar(db.school.name,'/ الإعداد / الطلاب')}
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">بيانات الطلاب — ${db.school.yearLabel}</div>
+        <div class="wizsub">${total} طالبًا · ${un} غير موزّع على شعب</div>
+      </div>
+    </div>
+    <div class="wizbody">
+      <div style="display:grid;grid-template-columns:380px 1fr;gap:14px">
+        <div class="card" style="align-self:start">
+          <div class="card-h">${editingId?'تعديل طالب':'تسجيل طالب'} ${editingId?'<span class="warnbox" style="margin:0;padding:3px 12px;font-size:12px">وضع التعديل</span>':''}</div>
+          <div class="field" style="margin-bottom:12px">
+            <label>اسم الطالب <span style="color:var(--bad)">*</span></label>
+            <input type="text" value="${esc(WizForm.name)}" placeholder="الاسم الثلاثي" oninput="WizForm.name=this.value;saveF();"/>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>النوع</label>
+            <div class="chips">
+              <span class="chip ${WizForm.gender==='m'?'sel':''}" onclick="WizForm.gender='m';saveF();render()">ذكر</span>
+              <span class="chip ${WizForm.gender==='f'?'sel':''}" onclick="WizForm.gender='f';saveF();render()">أنثى</span>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>المسار (يُسجَّل به الطالب)</label>
+            <select onchange="setF('pathId',this.value)">
+              ${pids.map(p=>`<option value="${p}" ${WizForm.pathId===p?'selected':''}>${PATHS_META[p].flag} ${PATHS_META[p].name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>المستوى</label>
+            <select onchange="WizForm.gradeId=this.value;saveF();">
+              ${Object.entries(groups).map(([st,arr])=>`<optgroup label="${st}">${arr.map(g=>`<option value="${g.id}" ${WizForm.gradeId===g.id?'selected':''}>${g.name}</option>`).join('')}</optgroup>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:16px">
+            <label>وليّ الأمر <span class="opt">(يمكن أن يكون لأكثر من ابن)</span></label>
+            <select onchange="WizForm.parentId=this.value;saveF();">
+              <option value="">— بدون —</option>
+              ${db.parents.map(p=>`<option value="${p.id}" ${WizForm.parentId===p.id?'selected':''}>${esc(p.name)}${studentsOfParent(db,p.id).length?` (${studentsOfParent(db,p.id).length} أبناء)`:''}</option>`).join('')}
+            </select>
+            <p class="hint"><a href="wiz-parents.html" style="color:var(--p);font-weight:800">＋ إضافة وليّ أمر جديد</a></p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn primary" onclick="submit()">${editingId?'✓ حفظ التعديل':'＋ تسجيل الطالب'}</button>
+            ${editingId?'<button class="btn ghost" onclick="cancelEdit()">إلغاء</button>':''}
+            ${!editingId?`<button class="btn ghost" onclick="addSample(15)">⚡ قائمة تجريبية (15)</button>`:''}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">سجل الطلاب (${total})</div>
+          <input class="search" type="text" placeholder="بحث بالاسم…" value="${esc(q)}" oninput="q=this.value;renderListOnly();"/>
+          <div class="chips" style="margin-bottom:12px">
+            <span class="chip sm ${fPath==='all'?'sel':''}" onclick="fPath='all';render()">الكل (${total})</span>
+            ${pids.map(p=>`<span class="chip sm ${fPath===p?'sel':''}" onclick="fPath='${p}';render()">${PATHS_META[p].flag} ${db.students.filter(s=>s.pathId===p).length}</span>`).join('')}
+          </div>
+          <div class="tblwrap" style="border:0;border-radius:0">
+          <table class="tbl">
+            <tr><th>الاسم</th><th>المسار</th><th>المستوى</th><th>وليّ الأمر</th><th>الشعبة</th><th></th></tr>
+            <tbody id="srows"></tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="wizfoot">
+      <a class="btn ghost" href="wiz-parents.html" style="text-decoration:none">→ أولياء الأمور</a>
+      <div class="footnote">${un?`بقي ${un} غير موزّع — الخطوة التالية توزيعهم على الشعب`:'كل الطلاب موزّعون'}</div>
+      <a class="btn primary" href="wiz-enroll.html" style="text-decoration:none">التالي: التوزيع على الشعب ←</a>
+    </div>`;
+  renderListOnly();
+}
+function renderListOnly(){
+  const el=$('#srows');if(!el)return;
+  const list=db.students.filter(s=>{
+    const okP=fPath==='all'||s.pathId===fPath;
+    const qq=q.trim();
+    return okP&&(!qq||s.name.includes(qq));
+  });
+  el.innerHTML=list.length?list.map(s=>`<tr>
+      <td><b>${esc(s.name)}</b> <span style="color:var(--faint);font-size:11.5px">${s.gender==='f'?'♀':'♂'}</span></td>
+      <td>${PATHS_META[s.pathId]?PATHS_META[s.pathId].flag+' '+PATHS_META[s.pathId].name:s.pathId}</td>
+      <td>${esc(levelName(db,s.gradeId))}</td>
+      <td>${esc(pName(s.parentId))}</td>
+      <td>${s.sectionKey?`<span class="tchip" style="background:var(--okbg);color:#065F46;border:1px solid var(--okline);border-radius:999px;padding:2px 10px;font-size:12px;font-weight:800">شعبة ${keyLetter(s.sectionKey)} ✓</span>`:'<span style="color:var(--faint);font-size:12px;font-weight:800">غير موزّع</span>'}</td>
+      <td style="white-space:nowrap">
+        <a class="btn tiny outline-p" style="cursor:pointer" onclick="startEdit('${s.id}')">تعديل</a>
+        <a class="btn tiny ghost" style="cursor:pointer;color:var(--bad)" onclick="delStudent('${s.id}')">حذف</a>
+      </td>
+    </tr>`).join('')
+  :'<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:24px">لا طلاب مسجلون بعد</td></tr>';
+}
+render();
+</script>
+</body>
+</html>

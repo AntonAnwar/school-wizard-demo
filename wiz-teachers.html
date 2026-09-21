@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>بيانات المعلمين</title>
+<link rel="stylesheet" href="common.css"/>
+<style>
+.two{display:grid;grid-template-columns:360px 1fr;gap:14px}
+@media(max-width:950px){.two{grid-template-columns:1fr}}
+.editing-badge{background:var(--warnbg);color:var(--warn);border:1px solid var(--warnline);border-radius:999px;padding:3px 12px;font-size:12px;font-weight:800}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a class="home" href="setup.html">→ المسار المؤهل</a>
+  <span class="t">👥 بيانات المعلمين</span>
+  <span class="d">الخطوة 4 من 5 — الأسماء والتخصصات وحدود العبء</span>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+const pathOptions=db.school&&db.school.paths.length?db.school.paths:Object.keys(PATHS_META);
+const LS_T='wiz-teachers-v1';
+
+let WizForm,editingId;
+function defaultForm(){
+  return {name:'',pathId:pathOptions[0],subject:'',phone:'',maxSections:db.school&&db.school.paths.length?3:3};
+}
+try{
+  const f=JSON.parse(store.get(LS_T));
+  WizForm=f&&f.form?f.form:defaultForm();
+  editingId=f&&f.editingId?f.editingId:null;
+  if(editingId&&!db.teachers.find(t=>t.id===editingId))editingId=null;
+}catch(e){WizForm=defaultForm();editingId=null;}
+function saveF(){store.set(LS_T,JSON.stringify({WizForm:WizForm,editingId}));}
+
+function setF(k,v){WizForm[k]=v;
+  if(k==='pathId')WizForm.subject='';
+  saveF();render();}
+
+function subjectOptions(){
+  const subs=db.subjects[WizForm.pathId]||[];
+  return subs;
+}
+
+function submit(){
+  const name=WizForm.name.trim();
+  if(!name){toast('اسم المعلم مطلوب',{type:'warn'});return;}
+  const dup=db.teachers.find(t=>t.name===name&&t.pathId===WizForm.pathId&&t.id!==editingId);
+  if(dup){toast('يوجد معلم بنفس الاسم والتخصص في هذا المسار',{type:'warn'});return;}
+  const rec={name,pathId:WizForm.pathId,subject:WizForm.subject.trim(),phone:WizForm.phone.trim(),maxSections:WizForm.maxSections};
+  if(editingId){
+    const t=db.teachers.find(t=>t.id===editingId);
+    Object.assign(t,rec);
+    toast('تم تحديث بيانات '+name,{type:'ok'});
+  }else{
+    db.teachers.push({id:'u'+Date.now().toString(36),...rec});
+    toast('تمت إضافة '+name,{type:'ok'});
+  }
+  editingId=null;
+  WizForm=defaultForm();
+  saveDB(db);saveF();render();
+}
+function startEdit(id){
+  const t=db.teachers.find(t=>t.id===id);
+  WizForm={name:t.name,pathId:t.pathId,subject:t.subject,phone:t.phone,maxSections:t.maxSections};
+  editingId=id;saveF();render();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelEdit(){editingId=null;WizForm=defaultForm();saveF();render();}
+function delTeacher(id){
+  const t=db.teachers.find(t=>t.id===id);
+  const used=(db.sectionsByYear[CURRENT_YEAR_OF() ]||[]).filter(s=>s.teacherId===id).length;
+  askConfirm('حذف المعلم',`سيتم حذف «${t.name}»${used?` — وهو معيّن حاليًا على ${used} شعبة وستُصبح دون مربّي صف`:''}.`,()=>{
+    db.teachers=db.teachers.filter(x=>x.id!==id);
+    if(editingId===id){editingId=null;WizForm=defaultForm();}
+    saveDB(db);saveF();render();toast('تم الحذف');
+  },'حذف',true);
+}
+function CURRENT_YEAR_OF(){return db.school?db.school.yearLabel:'2025/2026';}
+
+function addSample(){
+  const exist=new Set(db.teachers.map(t=>t.name));
+  const n=DEMO_TEACHER_SEED.filter(t=>!exist.has(t[0])).length;
+  if(!n){toast('جميع المعلمين التجريبيين موجودون مسبقًا');return;}
+  DEMO_TEACHER_SEED.forEach((t,i)=>{
+    if(!exist.has(t[0]))db.teachers.push({id:'u'+Date.now().toString(36)+'_'+i,name:t[0],subject:t[1],pathId:'national',phone:'',maxSections:3});
+  });
+  saveDB(db);render();toast('تمت إضافة '+n+' معلمًا تجريبيًا',{type:'ok'});
+}
+function clearAllTeachers(){
+  askConfirm('حذف كل المعلمين','سيتم حذف '+db.teachers.length+' معلمًا بالكامل.',()=>{
+    db.teachers=[];editingId=null;WizForm=defaultForm();
+    saveDB(db);saveF();render();toast('تم الحذف الكامل');
+  },'حذف الكل',true);
+}
+
+let q='',filterPath='all';
+
+function render(){
+  const subs=subjectOptions();
+  const list=db.teachers.filter(t=>{
+    const okP=filterPath==='all'||t.pathId===filterPath;
+    const qq=q.trim();
+    const okQ=!qq||t.name.includes(qq)||(t.subject||'').includes(qq);
+    return okP&&okQ;
+  });
+  const pathCount=p=>db.teachers.filter(t=>t.pathId===p).length;
+
+  $('#app').innerHTML=`${appbar(db.school?db.school.name:'المدرسة (قيد الإعداد)','/ الإعداد / المعلمون')}
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">بيانات المعلمين</div>
+        <div class="wizsub">${db.teachers.length} معلمًا في النظام · ${pathOptions.map(p=>PATHS_META[p].flag+' '+pathCount(p)).join(' · ')}</div>
+      </div>
+      ${!db.school?'<span class="warnbox" style="margin:0">لم تُنشأ المدرسة بعد — تُخزن التخصصات وفق المسارات الثلاثة</span>':''}
+    </div>
+    <div class="wizbody">
+      <div class="two">
+        <div class="card" style="align-self:start">
+          <div class="card-h">${editingId?'تعديل معلم':'إضافة معلم'} ${editingId?'<span class="editing-badge">وضع التعديل</span>':''}</div>
+          <div class="field" style="margin-bottom:12px">
+            <label>الاسم الكامل <span style="color:var(--bad)">*</span></label>
+            <input type="text" value="${esc(WizForm.name)}" placeholder="مثال: ليلى خالد" oninput="WizForm.name=this.value;saveF();"/>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>المسار</label>
+            <select onchange="setF('pathId',this.value)">
+              ${pathOptions.map(p=>`<option value="${p}" ${WizForm.pathId===p?'selected':''}>${PATHS_META[p].flag} ${PATHS_META[p].name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>التخصص</label>
+            ${subs.length
+              ?`<select onchange="WizForm.subject=this.value;saveF();">
+                  <option value="">— اختر —</option>
+                  ${subs.map(s=>`<option ${WizForm.subject===s?'selected':''}>${esc(s)}</option>`).join('')}
+                </select>`
+              :`<input type="text" value="${esc(WizForm.subject)}" placeholder="اكتب التخصص (لا توجد مواد مضافة لهذا المسار بعد)" oninput="WizForm.subject=this.value;saveF();"/>
+                <p class="hint">أضف المواد من <a href="wiz-subjects.html" style="color:var(--p);font-weight:800">المواد الدراسية</a> للحصول على قائمة اختيار.</p>`}
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>الهاتف <span class="opt">(اختياري)</span></label>
+            <input type="text" value="${esc(WizForm.phone)}" placeholder="079 000 0000" oninput="WizForm.phone=this.value;saveF();"/>
+          </div>
+          <div class="field" style="margin-bottom:16px">
+            <label>الحد الأقصى للشعب المسموح بها</label>
+            <span class="num"><button onclick="setF('maxSections',Math.min(8,WizForm.maxSections+1))">＋</button><b>${WizForm.maxSections}</b><button onclick="setF('maxSections',Math.max(1,WizForm.maxSections-1))">−</button></span>
+            <p class="hint">يُستخدم في تنبيهات العبء داخل معالج الصفوف والشعب.</p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn primary" onclick="submit()">${editingId?'✓ حفظ التعديل':'＋ إضافة المعلم'}</button>
+            ${editingId?'<button class="btn ghost" onclick="cancelEdit()">إلغاء</button>':''}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">قائمة المعلمين
+            <span style="margin-inline-start:auto;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn tiny outline-p" onclick="addSample()">⚡ قائمة تجريبية (13)</button>
+              ${db.teachers.length?`<button class="btn tiny ghost" onclick="clearAllTeachers()">حذف الكل</button>`:''}
+            </span>
+          </div>
+          <input class="search" type="text" placeholder="بحث بالاسم أو التخصص…" value="${esc(q)}" oninput="q=this.value;renderListOnly();"/>
+          <div class="chips" style="margin-bottom:12px">
+            <span class="chip sm ${filterPath==='all'?'sel':''}" onclick="filterPath='all';render()">الكل (${db.teachers.length})</span>
+            ${pathOptions.map(p=>`<span class="chip sm ${filterPath===p?'sel':''}" onclick="filterPath='${p}';render()">${PATHS_META[p].flag} ${pathCount(p)}</span>`).join('')}
+          </div>
+          <div class="tblwrap" style="border:0;border-radius:0">
+          <table class="tbl" id="ttable">
+            <tr><th>الاسم</th><th>التخصص</th><th>المسار</th><th>الهاتف</th><th>الحد الأقصى</th><th></th></tr>
+            <tbody id="trows"></tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="wizfoot">
+      <a class="btn ghost" href="wiz-subjects.html" style="text-decoration:none">→ المواد الدراسية</a>
+      <div class="footnote">${db.teachers.length?`${db.teachers.length} معلمًا محفوظ — يمكنك المتابعة`:'أضف المعلمين (أو القائمة التجريبية) ثم تابع'}</div>
+      <a class="btn primary" href="index.html" style="text-decoration:none">التالي: الصفوف والشعب ←</a>
+    </div>`;
+  renderListOnly();
+}
+function renderListOnly(){
+  const el=$('#trows'); if(!el)return;
+  const list=db.teachers.filter(t=>{
+    const okP=filterPath==='all'||t.pathId===filterPath;
+    const qq=q.trim();
+    const okQ=!qq||t.name.includes(qq)||(t.subject||'').includes(qq);
+    return okP&&okQ;
+  });
+  el.innerHTML=list.length?list.map(t=>`<tr>
+      <td><b>${esc(t.name)}</b></td>
+      <td>${esc(t.subject)||'—'}</td>
+      <td>${PATHS_META[t.pathId]?PATHS_META[t.pathId].flag+' '+PATHS_META[t.pathId].name:t.pathId}</td>
+      <td>${esc(t.phone)||'—'}</td>
+      <td>${t.maxSections} شعب</td>
+      <td style="white-space:nowrap">
+        <a class="btn tiny outline-p" style="cursor:pointer" onclick="startEdit('${t.id}')">تعديل</a>
+        <a class="btn tiny ghost" style="cursor:pointer;color:var(--bad)" onclick="delTeacher('${t.id}')">حذف</a>
+      </td>
+    </tr>`).join('')
+    :'<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:24px">لا معلمون مطابقون — أضف معلمًا من النموذج</td></tr>';
+}
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>إعداد المدرسة — البيانات والمسارات</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<div class="topbar">
+  <a class="home" href="setup.html">→ المسار المؤهل</a>
+  <span class="t">🏫 إعداد المدرسة</span>
+  <span class="d">الخطوة 1 من 5 في إعداد النظام</span>
+</div>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+const LS_W='wiz-school-v1';
+function defaultS(){
+  return {step:1,name:db.school?db.school.name:'',type:'خاصة',city:'عمان',phone:'',
+    paths:db.school&&db.school.paths.length?db.school.paths:['national'],
+    yearLabel:'2026/2027',month:'سبتمبر',day:9,periods:db.school?db.school.periodsPerDay:6,
+    maxPerSection:db.school?db.school.maxPerSection:35};
+}
+let S;
+try{S=Object.assign(defaultS(),JSON.parse(store.get(LS_W))||{});}catch(e){S=defaultS();}
+const saveS=()=>store.set(LS_W,JSON.stringify(S));
+const STEPS=['الهوية','المسارات','العام والجدول','المراجعة'];
+
+function set(k,v){S[k]=v;saveS();render();}
+function togglePath(pid){
+  const i=S.paths.indexOf(pid);
+  if(i>=0)S.paths.splice(i,1); else S.paths.push(pid);
+  saveS();render();
+}
+function goBackTo(n){S.step=n;saveS();render();}
+function next(){
+  if(S.step===1){
+    if(!S.name.trim()){toast('اسم المدرسة مطلوب',{type:'warn'});return;}
+    S.step=2;
+  }else if(S.step===2){
+    if(!S.paths.length){toast('اختر مسارًا واحدًا على الأقل',{type:'warn'});return;}
+    S.step=3;
+  }else if(S.step===3){ S.step=4; }
+  saveS();render();
+}
+function back(){S.step=Math.max(1,S.step-1);saveS();render();}
+
+function doSave(){
+  db=loadDB();
+  db.school={name:S.name.trim(),type:S.type,city:S.city,phone:S.phone.trim(),
+    yearLabel:S.yearLabel,yearStartMonth:S.month,yearStartDay:S.day,
+    periodsPerDay:S.periods,maxPerSection:S.maxPerSection,paths:[...S.paths]};
+  saveDB(db);
+  store.del(LS_W);
+  toast('✅ تم حفظ بيانات المدرسة',{type:'ok',dur:6000});
+  renderDone();
+}
+function renderDone(){
+  $('#app').innerHTML=`
+  <div class="card" style="max-width:640px;margin:50px auto;text-align:center">
+    <div style="font-size:46px">🎉</div>
+    <h2 style="font-size:20px;margin-top:10px">تم حفظ بيانات ${esc(S.name)} بنجاح</h2>
+    <p class="hint" style="margin:10px 0 20px">المسارات: ${S.paths.map(p=>PATHS_META[p].flag+' '+PATHS_META[p].name).join('، ')}</p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <a class="btn primary" href="wiz-stages.html" style="text-decoration:none">← متابعة: المستويات لكل مسار</a>
+      <a class="btn ghost" href="setup.html" style="text-decoration:none">لوحة المسار المؤهل</a>
+    </div>
+  </div>`;
+}
+
+function body(){
+  if(S.step===1){
+    return `<div class="card">
+      <div class="card-h">هوية المدرسة</div>
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1">
+          <label>اسم المدرسة <span style="color:var(--bad)">*</span></label>
+          <input type="text" value="${esc(S.name)}" placeholder="مثال: مدرسة الرواد" oninput="S.name=this.value;saveS();"/>
+        </div>
+        <div class="field">
+          <label>نوع المدرسة</label>
+          <div class="chips">
+            ${['حكومية','خاصة','مواطنة'].map(t=>`<span class="chip ${S.type===t?'sel':''}" onclick="set('type','${t}')">${t}</span>`).join('')}
+          </div>
+        </div>
+        <div class="field">
+          <label>المحافظة</label>
+          <select onchange="set('city',this.value)">${GOVERNORATES.map(g=>`<option ${S.city===g?'selected':''}>${g}</option>`).join('')}</select>
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label>هاتف المدرسة <span class="opt">(اختياري)</span></label>
+          <input type="text" value="${esc(S.phone)}" placeholder="079 000 0000" oninput="S.phone=this.value;saveS();"/>
+        </div>
+      </div>
+    </div>`;
+  }
+  if(S.step===2){
+    return `<div class="card">
+      <div class="card-h">المسارات التعليمية المتوفرة في المدرسة <span class="hint" style="margin:0">اختر واحدًا أو أكثر</span></div>
+      <div class="pathcards">
+        ${Object.entries(PATHS_META).map(([pid,m])=>{
+          const sel=S.paths.includes(pid);
+          const lv=STAGE_PRESETS[pid].reduce((a,s)=>a+s.levels.length,0);
+          const stg=STAGE_PRESETS[pid].length;
+          return `<div class="pathcard ${sel?'sel':''}" onclick="togglePath('${pid}')">
+            ${sel?'<span class="tick">✓</span>':''}
+            <span class="flag">${m.flag}</span>
+            <b>${m.name}</b>
+            <p>${m.desc}</p>
+            <div class="meta">${stg} مراحل · ${lv} مستوى (قالب جاهز قابل للتعديل)</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <p class="hint">سيُعرّف لكل مسار مستوياته ومواده في الخطوات التالية — يمكن للمدرسة أن تخدم مسارًا واحدًا أو ثلاثة معًا.</p>
+    </div>`;
+  }
+  if(S.step===3){
+    return `<div class="card">
+      <div class="card-h">العام الدراسي</div>
+      <div class="chips">
+        ${YEAR_CHOICES.map(y=>`<span class="chip ${S.yearLabel===y?'sel':''}" onclick="set('yearLabel','${y}')">${y}</span>`).join('')}
+      </div>
+      <div class="form-grid" style="margin-top:14px">
+        <div class="field">
+          <label>بداية العام</label>
+          <div style="display:flex;gap:8px">
+            <select style="flex:1;border:1.5px solid var(--line);border-radius:10px;padding:8px" onchange="set('month',this.value)">
+              ${MONTHS.map(m=>`<option ${S.month===m?'selected':''}>${m}</option>`).join('')}
+            </select>
+            <select style="flex:1;border:1.5px solid var(--line);border-radius:10px;padding:8px" onchange="set('day',this.value)">
+              ${Array.from({length:30},(_,i)=>i+1).map(d=>`<option ${S.day===d?'selected':''}>${d}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h">الجدول والحدود الافتراضية</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>الحصص اليومية</label>
+          <span class="num"><button onclick="set('periods',Math.max(1,S.periods+1))">＋</button><b>${S.periods}</b><button onclick="set('periods',Math.max(1,S.periods-1))">−</button></span>
+        </div>
+        <div class="field">
+          <label>الحد الأقصى الافتراضي للتلاميد في الشعبة</label>
+          <span class="num"><button onclick="set('maxPerSection',Math.min(60,S.maxPerSection+1))">＋</button><b>${S.maxPerSection}</b><button onclick="set('maxPerSection',Math.max(1,S.maxPerSection-1))">−</button></span>
+          <p class="hint">يُستخدم افتراضيًا في معالج الصفوف والشعب.</p>
+        </div>
+      </div>
+    </div>`;
+  }
+  /* المراجعة */
+  const rows=[
+    ['اسم المدرسة',esc(S.name)],['النوع',S.type],['المحافظة',S.city],
+    ['الهاتف',S.phone||'—'],
+    ['المسارات',S.paths.map(p=>PATHS_META[p].flag+' '+PATHS_META[p].name).join('، ')],
+    ['العام الدراسي',`${S.yearLabel} (يبدأ ${S.day} ${S.month})`],
+    ['الحصص اليومية',S.periods],
+    ['الحد الأقصى الافتراضي للشعبة',S.maxPerSection+' تلميذًا']
+  ];
+  return `<div class="card">
+    <div class="card-h">راجع البيانات قبل الحفظ</div>
+    <table class="tbl">
+      ${rows.map(r=>`<tr><td style="width:220px">${r[0]}</td><td><b>${r[1]}</b></td></tr>`).join('')}
+    </table>
+    <p class="hint">يمكنك التعديل لاحقًا من هذه الشاشة في أي وقت — التعديلات على المسارات لا تمس الشعب المنشأة.</p>
+  </div>`;
+}
+
+function render(){
+  if(S.step===4&&db.school===undefined){/* noop */}
+  const foot = S.step<4
+    ?`${`<button class="btn ghost" onclick="${S.step===1?'S.cancel()':'back()'}">${S.step===1?'إلغاء':'→ رجوع'}</button>`}
+      <div class="footnote">الخطوة ${['١','٢','٣'][S.step-1]} من ٤</div>
+      <button class="btn primary" onclick="next()">التالي ←</button>`
+    :`<button class="btn ghost" onclick="back()">→ رجوع</button>
+      <div class="footnote">سيُحفظ فورًا ويمكن تعديله لاحقًا</div>
+      <button class="btn primary" onclick="doSave()">✓ حفظ بيانات المدرسة</button>`;
+  $('#app').innerHTML=`${appbar(db.school?db.school.name:'المدرسة (قيد الإعداد)','/ الإعداد / بيانات المدرسة')}
+    <div class="wizhead">
+      <div>
+        <div class="wiztitle">إعداد المدرسة — البيانات والمسارات</div>
+        <div class="wizsub">خطوة 1 من 5 في مسار الإعداد · تُحفظ المسودة تلقائيًا</div>
+      </div>
+      <div class="wsteps">${stepIndicator(STEPS,S.step)}</div>
+    </div>
+    <div class="wizbody">${body()}</div>
+    <div class="wizfoot">${foot}</div>`;
+}
+S.cancel=()=>{location.href='setup.html';};
+render();
+</script>
+</body>
+</html>

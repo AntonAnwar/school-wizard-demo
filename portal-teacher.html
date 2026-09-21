@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>بوابة المعلم</title>
+<link rel="stylesheet" href="common.css"/>
+</head>
+<body>
+<main id="app" class="page"></main>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="common.js"></script>
+<script>
+"use strict";
+let db=loadDB();
+const ME=getSession();
+if(!ME||ME.role!=='teacher'){ location.href='portal.html'; }
+const YEAR=db.school.yearLabel;
+const ALL_SECS=db.sectionsByYear[YEAR]||[];
+const MY_SECS=ALL_SECS.filter(s=>s.teacherId===ME.id);
+
+const secName=s=>s?levelName(db,s.gradeId)+' / شعبة '+s.letter:'—';
+const secOf=key=>ALL_SECS.find(s=>secKey(s)===key);
+const unreadN=()=>notificationsFor(db,ME.role,ME.id).filter(n=>!n.read).length;
+const boxes=()=>teacherBoxes(db,ME.id,YEAR);
+const boxSet=()=>new Set(boxes().map(b=>b.sectionKey+'||'+b.subject));
+function myPending(){
+  const set=boxSet(); let n=0;
+  (db.assignments||[]).forEach(a=>{
+    if(!set.has(a.sectionKey+'||'+a.subject))return;
+    (db.submissions||[]).forEach(s=>{ if(s.assignmentId===a.id&&s.status==='submitted')n++; });
+  });
+  return n;
+}
+
+const P={tab:'grid',ws:null,wsTab:'asg',secKey:null,asgId:null,
+  attDate:todayStr(),attDraft:{},chatId:null,rcStudent:null,
+  newAsg:null,resRows:[{name:'',url:'',fileData:null}],
+  noteStudent:null,noteKind:'behavioral',noteText:'',
+  planWeek:'',planText:'',planFile:null,
+  behavStudent:null,behavKind:'negative',behavBehaviorId:null,behavNote:'',behavAction:'',behavResult:null};
+const myStudents=()=>[...new Map(boxes().flatMap(b=>studentsOfSection(db,b.sectionKey)).map(s=>[s.id,s])).values()];
+
+/* ============================= التصيير ============================= */
+function render(){
+  if(P.rcStudent){ renderRC(); return; }
+  if(P.ws){ renderWs(); return; }
+  const bxs=boxes();
+  const stuIds=new Set(myStudents().map(s=>s.id));
+  const openInc=openIncidents(db).filter(x=>stuIds.has(x.studentId)).length;
+  const tabs=[
+    ['grid','📚 صفوفي',bxs.length||null],
+    ['grade','✅ التقييم والتسليمات',myPending()||null],
+    ['behav','🧭 السلوك',openInc||null],
+    ['att','🗓️ الحضور',null],
+    ['chat','💬 المحادثات',unreadConvs(db,ME.role,ME.id).length||null],
+    ['rc','📊 كشوف النتائج',null]
+  ];
+  const header=`
+  <div class="topbar" style="position:static;border-radius:12px;margin-bottom:14px">
+    <span class="t">🏫 ${esc(db.school.name)}</span>
+    <span class="rolebadge">👨‍🏫 ${esc(teacherById(db,ME.id).name)} · ${esc(teacherById(db,ME.id).subject||'معلم')}</span>
+    <button class="reset" onclick="T.showNotifs()" title="الإشعارات">🔔 الإشعارات${unreadN()?` <b style="background:var(--bad);border-radius:99px;padding:1px 7px">(${unreadN()})</b>`:''}</button>
+    <a class="home" href="portal.html">← خروج</a>
+  </div>
+  <div class="tabs no-print">${tabs.map(([id,t,c])=>`<span class="tab ${P.tab===id?'on':''}" onclick="T.setTab('${id}')">${t}${c!=null?`<span class="cnt">${c}</span>`:''}</span>`).join('')}</div>`;
+  $('#app').innerHTML=header+({grid:tabGrid,grade:tabGrade,behav:tabBehavior,att:tabAtt,chat:tabChat,rc:tabRC}[P.tab])();
+}
+
+/* ---------- 1.5) السلوك: واجهة المعلم المبسطة ---------- */
+function behavBar(cur,target,good){
+  const p=target?Math.min(100,Math.round(cur/target*100)):100;
+  return `<div style="flex:1;min-width:150px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;margin-bottom:4px">
+      <span style="color:${good?'#059669':'#DC2626'}">${good?'+':'−'}${Math.abs(cur)} نقطة</span>
+      <span class="hint">${target?('الحد التالي: '+(good?'+':'−')+target):'وصل للحد الأقصى'}</span>
+    </div>
+    <div style="height:8px;background:#E5E7EB;border-radius:99px;overflow:hidden"><div style="height:100%;width:${p}%;background:${good?'var(--ok)':'var(--bad)'};border-radius:99px"></div></div>
+  </div>`;
+}
+function tabBehavior(){
+  const studs=myStudents();
+  if(!P.behavStudent||!studs.some(s=>s.id===P.behavStudent))P.behavStudent=studs[0]?studs[0].id:null;
+  const st=studentById(db,P.behavStudent);
+  if(!st)return '<div class="empty" style="margin-top:10px"><div class="ic">🧭</div><b>لا طلاب في صفاي بعد</b><p>عند توزيع الطلاب على شعبك ستسجل سلوكهم من هنا.</p></div>';
+  const info=studentBehavior(db,st.id);
+  const list=db.behaviors[P.behavKind];
+  if(!P.behavBehaviorId||!list.some(b=>b.id===P.behavBehaviorId))P.behavBehaviorId=list[0]?list[0].id:null;
+  const recent=(db.behaviorRecords||[]).filter(r=>r.studentId===st.id).sort((a,b)=>b.at.localeCompare(a.at)).slice(0,5);
+  const res=P.behavResult;
+  return `
+  <div class="pbar2">
+    <b>الطالب:</b>
+    <select class="inline" onchange="T.behavStudent(this.value)">
+      ${studs.map(s=>`<option value="${s.id}" ${s.id===st.id?'selected':''}>${esc(s.name)} — ${secName(secOf(s.sectionKey))}</option>`).join('')}
+    </select>
+    <span class="stchip ${STAGE_META[info.stage]?STAGE_META[info.stage].cls:'ok'}">${info.stage?('⚠️ المرحلة: '+info.stageName):'✅ سلوك سليم'}</span>
+    <span class="stchip ${info.level?'info':'gray'}">${info.level?('🏆 '+info.levelName):'لا مستوى إيجابي بعد'}</span>
+  </div>
+  <div class="card">
+    <div class="card-h">📈 وضع ${esc(st.name)} الحالي</div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap">
+      ${behavBar(info.negAbs,info.nextNeg,false)}
+      ${behavBar(info.pos,info.nextPos,true)}
+    </div>
+    ${info.incidents.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+      ${info.incidents.map(inc=>`<span class="stchip ${STAGE_META[inc.stage].cls}">${inc.status==='open'?'⚠️':'✓'} ${inc.name} (${inc.at})</span>`).join('')}
+    </div>`:''}
+    ${info.awards.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      ${info.awards.map(aw=>`<span class="stchip ok">🏆 ${aw.name} — ${aw.reward}</span>`).join('')}
+    </div>`:''}
+  </div>
+  <div class="card">
+    <div class="card-h">🖊️ تسجيل سلوك جديد على ${esc(st.name)} — واجهة مبسطة</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn ${P.behavKind==='negative'?'primary':'ghost'}" style="flex:1;min-width:150px" onclick="T.behavKind('negative')">🔻 سلوك سلبي (نقاط −)</button>
+      <button class="btn ${P.behavKind==='positive'?'primary':'ghost'}" style="flex:1;min-width:150px" onclick="T.behavKind('positive')">🌟 سلوك إيجابي (نقاط +)</button>
+    </div>
+    <label class="mlabel">السلوك (القائمة قابلة للتعديل من إدارة السلوك)</label>
+    <select class="inline" style="width:100%" onchange="T.behavBehavior(this.value)">
+      ${list.map(b=>`<option value="${b.id}" ${b.id===P.behavBehaviorId?'selected':''}>${esc(b.name)} — ${P.behavKind==='negative'?'-':'+'}${b.points} نقطة (${esc(b.category)})</option>`).join('')}
+    </select>
+    <label class="mlabel">ملاحظة (اختياري)</label>
+    <input class="din" style="width:100%" value="${esc(P.behavNote)}" onchange="T.behavNote(this.value)" placeholder="مثال: تأخر ثلاث مرات هذا الأسبوع دون عذر"/>
+    <label class="mlabel">الإجراء المتخذ (اختياري)</label>
+    <input class="din" style="width:100%" value="${esc(P.behavAction)}" onchange="T.behavAction(this.value)" placeholder="مثال: تذكير لفظي أمام الطلاب"/>
+    <div class="row" style="margin-top:12px;flex-wrap:wrap">
+      <span class="stchip ok">📨 يصل وليّ الأمر إشعار تلقائيًا مع كل سجل (نظام تواصل فعال)</span>
+      <button class="btn primary" style="margin-inline-start:auto" onclick="T.record()">💾 تسجيل في سجل الطالب</button>
+    </div>
+    <p class="hint" style="margin-top:8px">دورة الإشعار: الطالب دائمًا · ولي الأمر دائمًا · مربّي الصف إن سجّلتها معلم مادة أخرى — وعند تخطي حد (تنبيه/إنذار/تدخل) تُفتح حالة متابعة تلقائيًا وتُشعر الإدارة والمرشد.</p>
+    ${res?`
+    <div style="background:var(--okbg);border:1.5px solid var(--okline);border-radius:12px;padding:12px 16px;margin-top:12px">
+      <b>✅ سُجّل: ${esc(res.record.behaviorName)} (${res.record.kind==='negative'?'-':'+'}${res.record.points}) على ${esc(st.name)}</b>
+      <div class="hint" style="margin-top:6px">المجاميع الجديدة: سلبي <b style="color:#DC2626">${res.totals.neg}</b> / إيجابي <b style="color:#059669">+${res.totals.pos}</b></div>
+      ${res.fired.stages.map(sg=>`<div class="hint" style="margin-top:4px;color:#92400E">⚠️ تفعّلت <b>المرحلة: ${sg.name}</b> — فُتحت حالة متابعة (الإجراء: ${esc(sg.action)}) وسُجّلت في شاشة الإدارة.</div>`).join('')}
+      ${res.fired.levels.map(lv=>`<div class="hint" style="margin-top:4px">🏆 حقق الطالب مستوى <b>${lv.name}</b> — ${esc(lv.reward)}</div>`).join('')}
+      <div class="hint" style="margin-top:6px">📨 الإشعارات المرسلة: الطالب ✓ · ولي الأمر ${res.notified.parent?'✓':'—'}${res.notified.homeroom?' · مربّي الصف ✓':''}</div>
+    </div>`:''}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <div class="card">
+      <div class="card-h">🕘 آخر السجلات (${info.records} إجمالي)</div>
+      ${recent.map(r=>{
+        const t=teacherById(db,r.teacherId);
+        return `<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line)">
+          <span class="stchip ${r.kind==='negative'?'bad':'ok'}" style="min-width:44px;text-align:center">${r.kind==='negative'?'-'+r.points:'+'+r.points}</span>
+          <div style="flex:1"><b style="font-size:13px">${esc(r.behaviorName)}</b>
+            <div class="hint">${esc(r.category)} · ${t?esc(t.name):'—'} · ${r.at}${r.note?' · '+esc(r.note):''}</div></div>
+        </div>`;
+      }).join('')||'<div class="hint">لا سجلات بعد — سجّل أول حالة أعلاه.</div>'}
+    </div>
+    <div class="card">
+      <div class="card-h">📊 تحليل النقاط حسب التصنيف</div>
+      ${info.byCategory.length?`
+      <table class="tbl">
+        <tr><th>التصنيف</th><th>سلبي</th><th>إيجابي</th></tr>
+        ${info.byCategory.map(c=>`<tr><td>${esc(c.category)}</td>
+          <td style="color:${c.neg<0?'#DC2626':'var(--faint)'};font-weight:800">${c.neg<0?c.neg:'—'}</td>
+          <td style="color:${c.pos>0?'#059669':'var(--faint)'};font-weight:800">${c.pos>0?'+'+c.pos:'—'}</td></tr>`).join('')}
+        <tr><td><b>الإجمالي</b></td><td style="color:#DC2626;font-weight:800">${info.neg}</td><td style="color:#059669;font-weight:800">+${info.pos}</td></tr>
+      </table>`:'<div class="hint">لا بيانات بعد.</div>'}
+    </div>
+  </div>`;
+}
+
+/* ---------- 1) صفوفي: شبكة المواد × الشعب ---------- */
+function tabGrid(){
+  const bxs=boxes();
+  if(!bxs.length){
+    return `<div class="warnbox" style="margin:10px 0">⚠️ لم تُعيَّن بعد على أي مادة في أي شعبة لهذا العام.
+      التعيينات تُحدَّد من إدارة المدرسة في <a href="wiz-teachplan.html" style="color:var(--p);font-weight:800">شاشة تعيينات التدريس</a>.</div>
+      <div class="empty"><div class="ic">📚</div><b>شاشتك فارغة حتى الآن</b><p>بعد تعيينك على مادة في شعبة ستظهر هنا مربعاتك: تضغط أي مربع لتنشر مهامه واختباراته وتسجّل ملاحظاته.</p></div>`;
+  }
+  const bySec={};
+  bxs.forEach(b=>{ (bySec[b.sectionKey]=bySec[b.sectionKey]||[]).push(b); });
+  const hint=`<p class="hint" style="margin-bottom:12px">👇 هذه «صفوفي»: كل مربع = مادة في شعبة تدرّسها. اضغط المربع لفتح مساحته: <b>الواجبات والاختبارات</b> · <b>التسليمات والتقييم</b> · <b>الملاحظات الأكاديمية والسلوكية</b>.
+    <span class="stchip info" style="margin-inline-start:6px">مادة تدريّسها</span>
+    <span class="stchip" style="background:#F5F3FF;color:#4338CA;border-color:#C7D2FE;margin-inline-start:4px">بصفتك مربّي الصف — أي مادة في صفك</span></p>`;
+  return hint+Object.entries(bySec).map(([k,subs])=>{
+    const s=secOf(k); if(!s)return '';
+    const homeroom=s.teacherId===ME.id;
+    return `
+    <div class="card">
+      <div class="card-h" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <b>🏫 ${levelName(db,s.gradeId)} / شعبة ${s.letter}</b>
+        <span class="stchip ${homeroom?'info':'gray'}">${homeroom?'أنت مربّي هذا الصف':'المربّي: '+esc(teacherOfSection(db,s)?teacherOfSection(db,s).name:'—')}</span>
+        <span class="stchip gray" style="margin-inline-start:auto">${studentsOfSection(db,k).length} طالبًا</span>
+      </div>
+      <div class="wsgrid" style="margin-top:10px">
+        ${subs.map(b=>{
+          const asgs=(db.assignments||[]).filter(a=>a.sectionKey===b.sectionKey&&a.subject===b.subject);
+          let pend=0;
+          asgs.forEach(a=>(db.submissions||[]).forEach(s2=>{ if(s2.assignmentId===a.id&&s2.status==='submitted')pend++; }));
+          return `
+          <div class="wsbox ${b.via==='homeroom'?'homeroom':''}" onclick="T.openWs('${b.sectionKey}','${esc(b.subject)}')">
+            ${b.via==='homeroom'?'<span class="badge-h">بصفتك مربّي الصف</span>':''}
+            <div class="subj">${esc(b.subject)}</div>
+            <div class="via">${b.via==='teach'?(homeroom?'مادة تدريّسها · وأنت مربّي الصف':'مادة تدريّسها'):'صلاحيات مربّي الصف'}</div>
+            <div class="meta">${asgs.length?asgs.length+' مهمة/اختبار':'لا مهام بعد'}${pend?` · <b style="color:#B45309">${pend} بانتظار التقييم</b>`:''}</div>
+            <div class="open">فتح مساحة العمل ←</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- مساحة العمل داخل مربع (مادة × شعبة) ---------- */
+function renderWs(){
+  const b=P.ws; const s=secOf(b.key);
+  const wsTabs=[
+    ['asg','📝 الواجبات والاختبارات'],
+    ['subs','📥 التسليمات والتقييم'],
+    ['plan','📅 الخطة الأسبوعية'],
+    ['notes','🗒️ الملاحظات الأكاديمية والسلوكية']
+  ];
+  $('#app').innerHTML=`
+  <div class="topbar" style="position:static;border-radius:12px;margin-bottom:14px">
+    <span class="t">🏫 ${esc(db.school.name)}</span>
+    <span class="rolebadge">👨‍🏫 ${esc(teacherById(db,ME.id).name)}</span>
+    <button class="reset" onclick="T.showNotifs()" title="الإشعارات">🔔${unreadN()?` <b style="background:var(--bad);border-radius:99px;padding:1px 7px">(${unreadN()})</b>`:''}</button>
+    <a class="home" href="portal.html">← خروج</a>
+  </div>
+  <div class="pbar2">
+    <button class="btn ghost" onclick="T.closeWs()">→ رجوع إلى صفوفي</button>
+    <b style="font-size:15px">${esc(b.subject)} · ${levelName(db,s.gradeId)} / شعبة ${s.letter}</b>
+    <span class="stchip ${b.via==='teach'?'ok':'info'}">${b.via==='teach'?'مادة تدريّسها':'صلاحيات مربّي الصف — أي مادة في صفك'}</span>
+  </div>
+  <div class="tabs no-print" style="margin-top:12px">${wsTabs.map(([id,t])=>`<span class="tab ${P.wsTab===id?'on':''}" onclick="T.wsTab('${id}')">${t}</span>`).join('')}</div>
+  ${P.wsTab==='asg'?wsAsg(b):P.wsTab==='subs'?wsSubs(b):P.wsTab==='plan'?wsPlan(b):wsNotes(b)}`;
+}
+
+/* ---------- 1.1) الواجبات والاختبارات ---------- */
+function wsAsg(b){
+  const asgs=(db.assignments||[]).filter(a=>a.sectionKey===b.key&&a.subject===b.subject);
+  const stu=studentsOfSection(db,b.key);
+  const resRows=P.resRows.map((r,i)=>`
+    <div style="display:flex;gap:8px;margin-bottom:7px;flex-wrap:wrap">
+      <input class="din" style="flex:1;min-width:150px" placeholder="اسم الملف/المورد (مثال: الوحدة.pdf)" value="${esc(r.name)}" onchange="T.resName(${i},this.value)"/>
+      ${r.fileData
+        ?`<span class="stchip ok" style="min-width:130px;text-align:center">📎 ملف مرفوع (${Math.round((r.fileData.length/1024))} KB)</span>`
+        :`<input class="din" style="flex:1;min-width:150px" placeholder="رابط (اختياري)" value="${esc(r.url)}" onchange="T.resUrl(${i},this.value)"/>`}
+      <label class="btn tiny outline-p" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+        📎 رفع ملف<input type="file" style="display:none" onchange="T.resFile(${i},this)"/>
+      </label>
+      <button class="btn tiny ghost" onclick="T.rmRes(${i})" ${P.resRows.length<=1?'disabled':''}>✕</button>
+    </div>`).join('');
+  return `
+  <div class="pbar2">
+    <span class="stchip info">${esc(b.subject)}</span>
+    <span class="stchip gray">${levelName(db,secOf(b.key).gradeId)} / شعبة ${secOf(b.key).letter} · ${stu.length} طالبًا</span>
+    <button class="btn primary" style="margin-inline-start:auto" onclick="T.openNewAsg()">＋ واجب / اختبار جديد</button>
+  </div>
+  ${asgs.length?asgs.map(a=>{
+    const subs=submissionsOf(db,a.id);
+    const graded=subs.filter(s=>s.status==='graded');
+    return `
+    <div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:230px">
+        <span class="stchip ${a.type==='assessment'?'warn':'gray'}">${ASG_TYPES[a.type].t}</span>
+        <b style="display:block;font-size:15px;margin-top:7px">${esc(a.title)}</b>
+        <div class="hint" style="margin-top:4px">التسليم: <b>${a.dueDate}</b> · الدرجة العظمى: ${a.maxScore}${a.instructions?' · 📌 '+esc(a.instructions).slice(0,60)+(a.instructions.length>60?'…':''):''}${a.resources.length?' · '+a.resources.map(r=>fileLinkHtml(r.name,r.fileData||r.url)).join('، '):''}</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:22px;font-weight:800;color:var(--p2)">${subs.length}/${stu.length}</div>
+        <div class="hint">تسليم</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:16px;font-weight:800;color:#059669">${graded.length}</div>
+        <div class="hint">مُقيَّم</div>
+      </div>
+      <button class="btn outline-p" onclick="T.setAsg('${a.id}')">فتح التقييم ←</button>
+    </div>`;
+  }).join(''):'<div class="empty" style="margin-top:10px"><div class="ic">📭</div><b>لا واجبات أو اختبارات لهذه المادة في هذه الشعبة بعد</b><p>أنشئ أول واجب أو اختبار — سيصل الطلاب تلقائيًا ويظهر هنا مع متابعة التسليمات.</p></div>'}
+  ${P.newAsg?`
+  <div class="overlay" onclick="if(event.target===this)T.closeNewAsg()">
+    <div class="modal" style="max-width:560px">
+      <h3>📝 واجب / اختبار جديد</h3>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span class="stchip info">المادة: ${esc(P.newAsg.subject)}</span>
+        <span class="stchip gray">الشعبة: ${levelName(db,secOf(P.newAsg.sectionKey).gradeId)} / ${secOf(P.newAsg.sectionKey).letter}</span>
+        <select class="inline" style="margin-inline-start:auto" onchange="T.a('type',this.value)">
+          <option value="task" ${P.newAsg.type==='task'?'selected':''}>واجب / مهمة</option>
+          <option value="assessment" ${P.newAsg.type==='assessment'?'selected':''}>اختبار / تقييم</option>
+        </select>
+      </div>
+      <label class="mlabel">عنوان الواجب/الاختبار</label>
+      <input class="din" style="width:100%" value="${esc(P.newAsg.title)}" onchange="T.a('title',this.value)" placeholder="مثال: اختبار الوحدة الأولى"/>
+      <label class="mlabel">تعليمات للطالب</label>
+      <textarea class="din" style="width:100%;min-height:70px" onchange="T.a('instructions',this.value)">${esc(P.newAsg.instructions)}</textarea>
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <div style="flex:1"><label class="mlabel">تاريخ التسليم</label>
+          <input class="din" type="date" value="${P.newAsg.dueDate}" onchange="T.a('dueDate',this.value)"/></div>
+        <div style="width:130px"><label class="mlabel">الدرجة العظمى</label>
+          <input class="din" type="number" min="1" max="100" value="${P.newAsg.maxScore}" onchange="T.a('maxScore',this.value)"/></div>
+      </div>
+      <label class="mlabel">الموارد / الملفات</label>
+      ${resRows}
+      <button class="btn tiny ghost" onclick="T.addRes()">＋ إضافة مورد</button>
+      <div class="row" style="margin-top:16px">
+        <button class="btn ghost" onclick="T.closeNewAsg()">إلغاء</button>
+        <button class="btn primary" onclick="T.saveAsg()">إنشاء والنشر لطلاب الشعبة</button>
+      </div>
+    </div></div>`:''}`;
+}
+
+/* ---------- 1.2) التسليمات والتقييم (داخل المربع) ---------- */
+function wsSubs(b){
+  const asgs=(db.assignments||[]).filter(a=>a.sectionKey===b.key&&a.subject===b.subject);
+  const a=(db.assignments||[]).find(x=>x.id===P.asgId&&x.sectionKey===b.key&&x.subject===b.subject)||asgs[0];
+  if(!a) return '<div class="empty" style="margin-top:10px"><div class="ic">📝</div><b>لا مهام بعد</b><p>أنشئ واجبًا أو اختبارًا أولًا من تبويب «الواجبات والاختبارات».</p></div>';
+  const stu=studentsOfSection(db,a.sectionKey);
+  const graded=submissionsOf(db,a.id).filter(s=>s.status==='graded');
+  const avg=graded.length?Math.round(graded.reduce((x,s)=>x+s.score,0)/graded.length):null;
+  return `
+  <div class="pbar2">
+    <b>المهمة:</b>
+    <select class="inline" onchange="T.setAsg(this.value)">
+      ${asgs.map(x=>`<option value="${x.id}" ${x.id===a.id?'selected':''}>${esc(x.title)}</option>`).join('')}
+    </select>
+    <span class="stchip info">${ASG_TYPES[a.type].t}</span>
+    <span class="stchip gray">تسليم: ${a.dueDate}</span>
+    <span class="stchip ${avg==null?'gray':'ok'}" style="margin-inline-start:auto">${avg!=null?'متوسط المُقيَّم: '+avg+'/'+a.maxScore:'لا تقييمات بعد'}</span>
+  </div>
+  ${a.instructions?`<div class="tip" style="margin-bottom:12px">📌 تعليمات المعلم: ${esc(a.instructions)}</div>`:''}
+  <div class="card" style="padding:6px 14px">
+    ${stu.map(s=>{
+      const sub=submissionFor(db,a.id,s.id);
+      const late=!sub&&a.dueDate<todayStr();
+      return `
+      <div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+        <div style="flex:1;min-width:150px"><b>${esc(s.name)}</b>
+          <div class="hint">${sub?('سُلِّم في '+sub.submittedAt+(sub.fileName?' · '+fileLinkHtml(sub.fileName,sub.fileData||null):'')):(late?'⏰ لم يسلِّم (تجاوز التاريخ)':'لم يسلِّم بعد')}</div>
+          ${sub&&sub.content?`<div class="hint" style="margin-top:3px">🖍️ ${esc(sub.content.slice(0,110))}${sub.content.length>110?'...':''}</div>`:''}</div>
+        ${sub?`
+          <span class="stchip ${sub.status==='graded'?'ok':'warn'}">${sub.status==='graded'?'مُقيَّم':'بانتظار التقييم'}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input class="din" id="gs_${sub.id}" type="number" min="0" max="${a.maxScore}" value="${sub.score==null?'':sub.score}" style="width:70px" title="الدرجة"/>
+            <span style="color:var(--faint);font-weight:800">/ ${a.maxScore}</span>
+          </div>
+          <input class="din" id="gf_${sub.id}" style="flex:2;min-width:180px" placeholder="ملاحظة/رد للطالب (Feedback)" value="${esc(sub.feedback)}"/>
+          <button class="btn tiny primary" onclick="T.saveGradeFromDom('${sub.id}')">حفظ التقييم</button>`
+        :'<span class="stchip gray">—</span>'}
+      </div>`;
+    }).join('')||'<div class="hint" style="padding:14px">لا طلاب في هذه الشعبة.</div>'}
+  </div>
+  <div class="hint" style="margin-top:8px">💡 حفظ التقييم يسجّل العلامة (Grades) وتظهر للطالب وولي الأمر مع الملاحظة (Feedback).</div>`;
+}
+
+/* ---------- 1.3) الخطة الأسبوعية (تُرسَل للطلاب وأولياء الأمور) ---------- */
+function wsPlan(b){
+  const plans=plansOfBox(db,b.key,b.subject);
+  const t=teacherById(db,ME.id);
+  const sec=secOf(b.key);
+  return `
+  <div class="pbar2">
+    <span class="stchip info">${esc(b.subject)}</span>
+    <span class="stchip gray">${levelName(db,sec.gradeId)} / شعبة ${sec.letter}</span>
+    <span class="stchip ok" style="margin-inline-start:auto">الإرسال = إشعار فوري لكل الطلاب وأولياء أمورهم في الشعبة</span>
+  </div>
+  <div class="card">
+    <div class="card-h">📅 إرسال الخطة الأسبوعية لمادة ${esc(b.subject)} في هذه الشعبة</div>
+    <label class="mlabel">أسبوع (العنوان)</label>
+    <input class="din" style="width:100%" value="${esc(P.planWeek)}" onchange="T.planWeek(this.value)" placeholder="مثال: أسبوع 2026-09-28"/>
+    <label class="mlabel">محتوى الخطة (يظهر للطلاب وأولياء الأمور)</label>
+    <textarea class="din" style="width:100%;min-height:100px" onchange="T.planText(this.value)" placeholder="اكتب خطة الأسبوع: الدروس، الأنشطة، الاختبارات القصيرة، وما يُطلب من الأهل…">${esc(P.planText)}</textarea>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
+      <label class="btn outline-p" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+        📎 إرفاق ملف الخطة<input type="file" style="display:none" onchange="T.planFile(this)"/>
+      </label>
+      ${P.planFile?`<span class="stchip ok">📎 ${esc(P.planFile.name)} (${Math.round(P.planFile.data.length/1024)} KB)</span>
+      <button class="btn tiny ghost" onclick="T.planFileClear()">✕ إزالة الملف</button>`:''}
+      <button class="btn primary" style="margin-inline-start:auto" onclick="T.postPlan()">📤 إرسال الخطة والإشعار</button>
+    </div>
+    <p class="hint" style="margin-top:8px">يصل إشعار فوري إلى كل طالب في الشعبة (في «📅 الخطة الأسبوعية») وإلى ولي أمر كل طالب، مع إمكانية تحميل الملف المرفق إن وُجد.</p>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="card-h">الخطط المُرسَلة في هذه المادة (${plans.length})</div>
+    ${plans.map(pl=>{
+      const pt=teacherById(db,pl.teacherId);
+      return `
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+        <span class="stchip info" style="min-width:150px;text-align:center">${esc(pl.weekLabel)}</span>
+        <div style="flex:1;min-width:230px">
+          ${pl.text?`<b style="font-size:13.5px">${esc(pl.text).slice(0,180)}${pl.text.length>180?'…':''}</b>`:''}
+          ${pl.fileName?`<div style="margin-top:6px">${fileLinkHtml(pl.fileName,pl.fileData)}</div>`:''}
+          <div class="hint" style="margin-top:5px">${pt?esc(pt.name):'—'} · ${pl.at} · ✓ أُرسل للطلاب وأولياء الأمور</div>
+        </div>
+      </div>`;
+    }).join('')||'<div class="hint">لم تُرسَل خطة أسبوعية بعد لهذه المادة — أنشئ الأولى أعلاه وسيصل الأهل فورًا.</div>'}
+  </div>`;
+}
+
+/* ---------- 1.4) الملاحظات الأكاديمية والسلوكية ---------- */
+function noteRow(n){
+  const t=teacherById(db,n.teacherId);
+  return `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)">
+    <span class="stchip ${NOTE_KINDS[n.kind]?NOTE_KINDS[n.kind].cls:'gray'}">${NOTE_KINDS[n.kind]?NOTE_KINDS[n.kind].ic:''} ${NOTE_KINDS[n.kind]?NOTE_KINDS[n.kind].t:'ملاحظة'}</span>
+    <div style="flex:1">
+      <b style="font-size:13.5px">${esc(n.text)}</b>
+      <div class="hint" style="margin-top:4px">من: ${t?esc(t.name):'—'}${t&&t.id!==ME.id?'':''} · ${n.at} · أُرسلت للطالب وولي أمره</div>
+    </div>
+  </div>`;
+}
+function wsNotes(b){
+  const studs=studentsOfSection(db,b.key);
+  if(!P.noteStudent)P.noteStudent=studs[0]?studs[0].id:null;
+  const st=studentById(db,P.noteStudent);
+  const all=st?notesOfStudent(db,st.id):[];
+  const inBox=all.filter(n=>n.sectionKey===b.key&&n.subject===b.subject);
+  const others=all.length-inBox.length;
+  return `
+  <div class="pbar2">
+    <b>الطالب:</b>
+    <select class="inline" onchange="T.noteStudent(this.value)">
+      ${studs.map(s=>`<option value="${s.id}" ${s.id===P.noteStudent?'selected':''}>${esc(s.name)}</option>`).join('')}
+    </select>
+    ${st?`<span class="stchip gray">${all.length} ملاحظة عليه (كل المواد)</span>`:''}
+  </div>
+  ${st?`
+  <div class="card">
+    <div class="card-h">🗒️ ملاحظة جديدة على ${esc(st.name)} — في مادة ${esc(b.subject)}</div>
+    <div class="row" style="margin-bottom:10px;flex-wrap:wrap">
+      <select class="inline" onchange="T.noteKind(this.value)">
+        <option value="academic" ${P.noteKind==='academic'?'selected':''}>📘 ملاحظة أكاديمية</option>
+        <option value="behavioral" ${P.noteKind==='behavioral'?'selected':''}>🧭 ملاحظة سلوكية</option>
+      </select>
+      <input class="search" style="flex:1;min-width:220px;margin-bottom:0" placeholder="اكتب الملاحظة هنا…" value="${esc(P.noteText)}" oninput="T.noteText(this.value)"/>
+      <button class="btn primary" onclick="T.sendNote()">إرسال الملاحظة</button>
+    </div>
+    <p class="hint">تُرسَل الملاحظة إلى <b>${esc(st.name)}</b> وولي أمره <b>${st.parentId?esc(parentById(db,st.parentId).name):''}</b> مع إشعار لكل منهما، وتُسجَّل باسمك في هذه المادة. إن كانت الملاحظة سلوكية قابلة للنقاط، استخدم <a href="javascript:void(0)" onclick="T.goBehavior('${st.id}')" style="color:var(--p);font-weight:800">سجل السلوك ←</a> لتسجيلها بنقطة وتفعيل سلّم التنبيه.</p>
+  </div>`:'<div class="empty"><div class="ic">🎒</div><b>لا طلاب في هذه الشعبة</b></div>'}
+  <div class="card" style="margin-top:12px">
+    <div class="card-h">ملاحظاتي على ${esc(st?st.name:'—')} في هذه المادة (${inBox.length})</div>
+    ${inBox.map(noteRow).join('')||'<div class="hint">لا ملاحظات بعد في هذه المادة.</div>'}
+    ${others?`<p class="hint" style="margin-top:8px">+ لديه ${others} ملاحظة في مواد أخرى — الطالب وولي أمره يريانها كاملة في «ملاحظاتي».</p>`:''}
+  </div>`;
+}
+
+/* ---------- 2) التقييم الشامل (كل صفاي) ---------- */
+function tabGrade(){
+  const set=boxSet();
+  const asgs=(db.assignments||[]).filter(a=>set.has(a.sectionKey+'||'+a.subject));
+  const a=(db.assignments||[]).find(x=>x.id===P.asgId&&set.has(x.sectionKey+'||'+x.subject))||asgs[0];
+  if(!a) return '<div class="empty" style="margin-top:10px"><div class="ic">📝</div><b>لا مهام في صفاي بعد</b><p>افتح أي مربع من «صفوفي» وأنشئ واجبًا أو اختبارًا.</p></div>';
+  const stu=studentsOfSection(db,a.sectionKey);
+  const graded=submissionsOf(db,a.id).filter(s=>s.status==='graded');
+  const avg=graded.length?Math.round(graded.reduce((x,s)=>x+s.score,0)/graded.length):null;
+  return `
+  <div class="pbar2">
+    <b>المهمة:</b>
+    <select class="inline" onchange="T.setAsg(this.value)">
+      ${asgs.map(x=>`<option value="${x.id}" ${x.id===a.id?'selected':''}>${esc(x.subject)} — ${esc(x.title)} (${secName(secOf(x.sectionKey))})</option>`).join('')}
+    </select>
+    <span class="stchip info">${ASG_TYPES[a.type].t}</span>
+    <span class="stchip gray">تسليم: ${a.dueDate}</span>
+    <span class="stchip ${avg==null?'gray':'ok'}" style="margin-inline-start:auto">${avg!=null?'متوسط المُقيَّم: '+avg+'/'+a.maxScore:'لا تقييمات بعد'}</span>
+  </div>
+  ${a.instructions?`<div class="tip" style="margin-bottom:12px">📌 تعليمات المعلم: ${esc(a.instructions)}</div>`:''}
+  <div class="card" style="padding:6px 14px">
+    ${stu.map(s=>{
+      const sub=submissionFor(db,a.id,s.id);
+      const late=!sub&&a.dueDate<todayStr();
+      return `
+      <div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+        <div style="flex:1;min-width:150px"><b>${esc(s.name)}</b>
+          <div class="hint">${sub?('سُلِّم في '+sub.submittedAt+(sub.fileName?' · 📎 '+esc(sub.fileName):'')):(late?'⏰ لم يسلِّم (تجاوز التاريخ)':'لم يسلِّم بعد')}</div></div>
+        ${sub?`
+          <span class="stchip ${sub.status==='graded'?'ok':'warn'}">${sub.status==='graded'?'مُقيَّم':'بانتظار التقييم'}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input class="din" id="gs_${sub.id}" type="number" min="0" max="${a.maxScore}" value="${sub.score==null?'':sub.score}" style="width:70px" title="الدرجة"/>
+            <span style="color:var(--faint);font-weight:800">/ ${a.maxScore}</span>
+          </div>
+          <input class="din" id="gf_${sub.id}" style="flex:2;min-width:180px" placeholder="ملاحظة/رد للطالب (Feedback)" value="${esc(sub.feedback)}"/>
+          <button class="btn tiny primary" onclick="T.saveGradeFromDom('${sub.id}')">حفظ التقييم</button>`
+        :'<span class="stchip gray">—</span>'}
+      </div>`;
+    }).join('')||'<div class="hint" style="padding:14px">لا طلاب في هذه الشعبة.</div>'}
+  </div>
+  <div class="hint" style="margin-top:8px">💡 حفظ التقييم يسجّل العلامة (Grades) وتظهر للطالب وولي الأمر مع الملاحظة (Feedback).</div>`;
+}
+
+/* ---------- 3) الحضور (مربّي الصف فقط) ---------- */
+function tabAtt(){
+  const hm=MY_SECS;
+  if(!hm.length) return `<div class="warnbox" style="margin:10px 0">⚠️ أنت لست مربّي صف لأي شعبة هذا العام — تسجيل الحضور والإعلام بالغياب من صلاحيات <b>مربّي الصف</b> أو إدارة المدرسة. <a href="index.html" style="color:var(--p);font-weight:800">عيِّن نفسك من جدول الصفوف والشعب</a>.</div>`;
+  const sec=hm.find(s=>secKey(s)===P.secKey)||hm[0];
+  const key=secKey(sec);
+  const stu=studentsOfSection(db,key);
+  const dates=attendanceDates(db,key);
+  const dayRecs=attendanceOfDay(db,P.attDate,key);
+  stu.forEach(s=>{ if(!P.attDraft[s.id]){ const r=dayRecs.find(x=>x.studentId===s.id); P.attDraft[s.id]={status:r?r.status:'present',excuse:r&&r.excuseType?r.excuseType:EXCUSES[0],notify:true}; } });
+  return `
+  <div class="pbar2">
+    <b>الشعبة (مربّي صف):</b>
+    <select class="inline" onchange="T.setAttSec(this.value)">
+      ${hm.map(s=>`<option value="${secKey(s)}" ${key===secKey(s)?'selected':''}>${levelName(db,s.gradeId)} / شعبة ${s.letter}</option>`).join('')}
+    </select>
+    <b>التاريخ:</b>
+    <input class="din" type="date" value="${P.attDate}" onchange="T.setAttDate(this.value)"/>
+    ${(()=>{ const dc={present:0,absent:0,late:0,excused:0}; Object.values(P.attDraft).forEach(d=>{if(d.status)dc[d.status]++;});
+      return `<span class="stchip ok">حاضر ${dc.present}</span><span class="stchip bad">غائب ${dc.absent}</span><span class="stchip warn">متأخر ${dc.late}</span><span class="stchip info">بعذر ${dc.excused}</span>`; })()}
+    <button class="btn ghost" onclick="T.attAllPresent()">✅ الكل حاضر</button>
+    <button class="btn primary" style="margin-inline-start:auto" onclick="T.saveAtt()">حفظ حضور اليوم</button>
+  </div>
+  <div class="hint" style="margin-bottom:10px">الأنواع: ${Object.entries(ATT_META).map(([k,v])=>`<span class="stchip ${v.cls}" style="margin-inline-start:4px">${v.t}</span>`).join('')} — عند «غياب بعذر» أو «متأخر» يُشعر وليّ الأمر تلقائيًا (يمكن تعطيل الإشعار للبعذر). استخدم «✅ الكل حاضر» ثم عدّل الغائبين فقط — أسرع طريقة للدوام العادي.</div>
+  ${stu.map(s=>{ const d=P.attDraft[s.id];
+    return `
+    <div class="attrow">
+      <span class="who">${esc(s.name)}</span>
+      <select onchange="T.attStatus('${s.id}',this.value)">
+        ${Object.entries(ATT_META).map(([k,v])=>`<option value="${k}" ${d.status===k?'selected':''}>${v.t}</option>`).join('')}
+      </select>
+      ${d.status==='excused'?`<select onchange="T.attExcuse('${s.id}',this.value)">
+        ${EXCUSES.map(e=>`<option ${d.excuse===e?'selected':''}>${e}</option>`).join('')}
+      </select>`:''}
+      ${d.status==='excused'?`<label style="display:flex;gap:6px;align-items:center;font-size:12.5px;font-weight:700;color:var(--mut);cursor:pointer">
+        <input type="checkbox" ${d.notify?'checked':''} onchange="T.attNotify('${s.id}',this.checked)"> إشعار ولي الأمر</label>`:''}
+    </div>`;
+  }).join('')||'<div class="hint">لا طلاب في هذه الشعبة.</div>'}
+  ${dates.length?`
+  <div class="card" style="margin-top:14px">
+    <div class="card-h">سجل الأيام (${dates.length})</div>
+    ${dates.map(dt=>{ const rs=attendanceOfDay(db,dt,key);
+      const c={present:0,absent:0,late:0,excused:0}; rs.forEach(r=>c[r.status]++);
+      return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px;font-weight:700">
+        <b style="min-width:105px">${dt}</b>
+        <span class="stchip ok">حاضر ${c.present}</span><span class="stchip bad">غائب ${c.absent}</span><span class="stchip warn">متأخر ${c.late}</span><span class="stchip info">بعذر ${c.excused}</span>
+      </div>`;
+    }).join('')}
+  </div>`:''}`;
+}
+
+/* ---------- 4) المحادثات 1:1 ---------- */
+function tabChat(){
+  const convs=conversationsOf(db,ME.role,ME.id);
+  const sel=convs.find(c=>c.id===P.chatId)||convs[0];
+  const other=c=>(c.a.role===ME.role&&c.a.id===ME.id)?c.b:c.a;
+  const pool=[];
+  MY_SECS.forEach(s=>studentsOfSection(db,secKey(s)).forEach(st=>{
+    pool.push({ref:{role:'student',id:st.id},t:st.name});
+    if(st.parentId){ const p=parentById(db,st.parentId); if(p) pool.push({ref:{role:'parent',id:p.id},t:p.name}); }
+  }));
+  const listHtml=convs.map(c=>{ const o=other(c); const l=lastMsg(c); const unread=l&&(l.from.role!==ME.role||l.from.id!==ME.id);
+    return `<div class="convl ${sel&&c.id===sel.id?'on':''}" onclick="T.openChat('${c.id}')">
+      <b>${esc(displayName(db,o))}</b><span class="stchip ${o.role==='parent'?'info':'gray'}" style="margin-inline-start:6px">${o.role==='parent'?'ولي أمر':'طالب'}</span>
+      ${unread?'<span class="dot"></span>':''}
+      <div class="last">${l?esc(l.text):'— لا رسائل بعد —'}</div></div>`;
+  }).join('');
+  const msgsHtml=sel?sel.messages.map(m=>{ const mine=m.from.role===ME.role&&m.from.id===ME.id;
+    return `<div class="msg ${mine?'me':'them'}">${esc(m.text)}<span class="mt">${mine?'أنت':esc(displayName(db,m.from))} · ${m.at}</span></div>`;
+  }).join(''):'<div class="hint" style="text-align:center;padding:30px 0">اختر محادثة أو ابدأ جديدة</div>';
+  return `
+  <div class="chatwrap">
+    <aside class="card" style="margin-bottom:0">
+      <div class="card-h">المحادثات
+        <select class="inline" style="margin-inline-start:auto" onchange="T.newChat(this.value)">
+          <option value="">＋ محادثة جديدة…</option>
+          ${pool.map(p=>`<option value="${p.ref.role}:${p.ref.id}">${esc(p.t)} (${p.ref.role==='parent'?'وليّ أمر':'طالب'})</option>`).join('')}
+        </select>
+      </div>
+      ${listHtml||'<div class="hint">لا محادثات بعد — ابدأ من القائمة المنسدلة (طلاب صفي وأولياؤهم).</div>'}
+    </aside>
+    <div class="card" style="margin-bottom:0">
+      ${sel?`<div class="card-h">${esc(displayName(db,other(sel)))} <span class="stchip gray" style="margin-inline-start:8px">محادثة فردية One-to-One</span></div>
+      <div class="msgs" id="msgs">${msgsHtml}</div>
+      <div class="chatinput">
+        <input id="chatbox" type="text" placeholder="اكتب رسالتك…" onkeydown="if(event.key==='Enter')T.sendMsg()"/>
+        <button class="btn primary" onclick="T.sendMsg()">إرسال</button>
+      </div>`
+      :'<div class="hint" style="padding:40px 0;text-align:center">اختر محادثة من القائمة</div>'}
+    </div>
+  </div>`;
+}
+
+/* ---------- 5) كشوف النتائج ---------- */
+function tabRC(){
+  const secs=MY_SECS.length?MY_SECS:ALL_SECS;
+  const sec=secs.find(s=>secKey(s)===P.secKey)||secs[0];
+  const key=secKey(sec);
+  const stu=studentsOfSection(db,key);
+  return `
+  <div class="pbar2">
+    <b>الشعبة:</b>
+    <select class="inline" onchange="T.setSec(this.value)">
+      ${secs.map(s=>`<option value="${secKey(s)}" ${key===secKey(s)?'selected':''}>${levelName(db,s.gradeId)} / شعبة ${s.letter}${s.teacherId===ME.id?' (مربّي)':''}</option>`).join('')}
+    </select>
+    <span class="hint" style="margin-inline-start:auto">اختر طالبًا لعرض كشف نتائجه (قابل للطباعة/التصدير)</span>
+  </div>
+  ${stu.map(s=>{
+    const rc=reportCardData(db,s.id);
+    return `<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">
+      <b style="flex:1;min-width:160px">${esc(s.name)}</b>
+      <span class="stchip ${rc.overall==null?'gray':rc.overall>=50?'ok':'bad'}">${rc.overall!=null?'العام: '+rc.overall+'%':'لا علامات بعد'}</span>
+      <span class="stchip gray">${rc.gradeCount} علامة</span>
+      <button class="btn tiny outline-p" onclick="T.openRc('${s.id}')">فتح الكشف ←</button>
+    </div>`;
+  }).join('')||'<div class="hint">لا طلاب في هذه الشعبة.</div>'}`;
+}
+function renderRC(){
+  const rc=reportCardData(db,P.rcStudent);
+  if(!rc){ P.rcStudent=null; render(); return; }
+  const s=rc.student, sec=rc.section, t=sec?teacherOfSection(db,sec):null;
+  $('#app').innerHTML=`
+  <div class="topbar" style="position:static;border-radius:12px;margin-bottom:14px">
+    <span class="t">📊 كشف نتائج طالب</span>
+    <button class="reset" onclick="T.closeRc()">← رجوع</button>
+  </div>
+  <div class="rc">
+    <div class="rc-head">
+      <div><b>🏫 ${esc(db.school.name)}</b><br/><span style="font-size:12.5px;opacity:.85">كشف نتائج — ${YEAR}</span></div>
+      <button class="btn primary" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+    </div>
+    <div class="rc-body">
+      <div class="rc-grid">
+        <div class="rc-cell">الطالب<b>${esc(s.name)}</b></div>
+        <div class="rc-cell">الصف / الشعبة<b>${sec?levelName(db,sec.gradeId)+' / شعبة '+sec.letter:'غير موزَّع'}</b></div>
+        <div class="rc-cell">مربّي الصف<b>${t?t.name:'—'}</b></div>
+        <div class="rc-cell">وليّ الأمر<b>${rc.parent?rc.parent.name:'غير مرتبط'}</b></div>
+        <div class="rc-cell">النتيجة العامة<b style="color:${rc.overall!=null&&rc.overall>=50?'#059669':'#DC2626'}">${rc.overall!=null?rc.overall+'%':'—'}</b></div>
+        <div class="rc-cell">النقاط السلوكية<b>سلبي ${rc.behavior.neg} / إيجابي +${rc.behavior.pos}</b></div>
+        <div class="rc-cell">الوضع السلوكي<b>${rc.behavior.stage?('⚠️ '+rc.behavior.stageName):'✅ سليم'}${rc.behavior.level?' · 🏆 '+rc.behavior.levelName:''}</div>
+      </div>
+      <table class="tbl">
+        <tr><th>المادة</th><th>عدد المهام/الاختبارات المقيَّمة</th><th>النسبة المئوية</th></tr>
+        ${rc.per.map(r=>`<tr><td>${esc(r.subject)}</td><td>${r.n}</td>
+          <td><b style="color:${r.avg>=50?'#059669':'#DC2626'}">${r.avg}%</b>
+          <span style="display:inline-block;width:110px;height:7px;background:#E5E7EB;border-radius:99px;margin-inline-start:8px;vertical-align:middle"><span style="display:block;height:100%;width:${r.avg}%;background:var(--p);border-radius:99px"></span></span></td></tr>`).join('')
+        ||'<tr><td colspan="3" style="color:var(--faint)">لا علامات مقيَّمة بعد</td></tr>'}
+      </table>
+      <div class="rc-grid" style="margin-top:14px">
+        <div class="rc-cell">أيام الحضور<b style="color:#059669">${rc.att.present}</b></div>
+        <div class="rc-cell">الغياب<b style="color:#DC2626">${rc.att.absent}</b></div>
+        <div class="rc-cell">التأخير<b style="color:#B45309">${rc.att.late}</b></div>
+        <div class="rc-cell">غياب بعذر<b style="color:#1E40AF">${rc.att.excused}</b></div>
+      </div>
+    </div>
+    <div class="rc-foot">
+      <span>توقيع المعلم: ........................</span>
+      <span>توقيع وليّ الأمر: ........................</span>
+      <span>التاريخ: ${todayStr()}</span>
+    </div>
+  </div>`;
+}
+
+/* ============================= الإجراءات ============================= */
+const T={
+  setTab(t){ P.tab=t; P.ws=null; P.rcStudent=null; P.asgId=null; render(); },
+  setSec(k){ P.secKey=k; P.asgId=null; render(); },
+  /* --- مساحة العمل --- */
+  openWs(key,subject){
+    if(!canWorkInBox(db,ME.id,key,subject)){ toast('⛔ هذه المادة في هذه الشعبة خارج صلاحياتك',{type:'warn'}); return; }
+    const b=boxes().find(x=>x.sectionKey===key&&x.subject===subject);
+    P.ws={key,subject,via:b?b.via:'teach'}; P.wsTab='asg'; P.asgId=null;
+    P.noteStudent=null; P.noteText=''; P.newAsg=null; P.resRows=[{name:'',url:''}];
+    render();
+  },
+  closeWs(){ P.ws=null; render(); },
+  wsTab(t){ P.wsTab=t; P.asgId=null; render(); },
+  /* --- إنشاء واجب/اختبار --- */
+  openNewAsg(){
+    const b=P.ws; if(!b)return;
+    P.newAsg={subject:b.subject,sectionKey:b.key,type:'task',title:'',instructions:'',dueDate:todayStr(),maxScore:20};
+    P.resRows=[{name:'',url:''}];
+    render();
+  },
+  closeNewAsg(){ P.newAsg=null; render(); },
+  a(k,v){ if(P.newAsg){ P.newAsg[k]=k==='maxScore'?Math.max(1,Math.min(100,parseInt(v)||1)):v; render(); } },
+  addRes(){ P.resRows.push({name:'',url:'',fileData:null}); render(); },
+  rmRes(i){ P.resRows.splice(i,1); render(); },
+  resName(i,v){ P.resRows[i].name=v; },
+  resUrl(i,v){ P.resRows[i].url=v; },
+  resFile(i,input){
+    pickFileEl(input,f=>{
+      P.resRows[i]={name:f.name,url:'',fileData:f.data};
+      render(); toast(`📎 جاهز للمرفق: ${f.name} (${Math.round(f.data.length/1024)} KB)`,{type:'ok'});
+    },e=>toast(e,{type:'warn'}));
+  },
+  /* --- الخطة الأسبوعية --- */
+  planWeek(v){ P.planWeek=v; },
+  planText(v){ P.planText=v; },
+  planFile(input){
+    pickFileEl(input,f=>{ P.planFile=f; render(); toast(`📎 أُلحق ملف الخطة: ${f.name}`,{type:'ok'}); },e=>toast(e,{type:'warn'}));
+  },
+  planFileClear(){ P.planFile=null; render(); },
+  postPlan(){
+    const b=P.ws; if(!b)return;
+    if(!P.planWeek.trim()&&!P.planText.trim()&&!P.planFile){ toast('أدخل محتوى الخطة أو عنون الأسبوع أو أرفق ملفًا',{type:'warn'}); return; }
+    const res=postWeeklyPlan(db,{sectionKey:b.key,subject:b.subject,teacherId:ME.id,
+      weekLabel:P.planWeek.trim(),text:P.planText.trim(),
+      fileName:P.planFile?P.planFile.name:null,fileData:P.planFile?P.planFile.data:null});
+    P.planWeek=''; P.planText=''; P.planFile=null;
+    render();
+    toast(`📅 أُرسِلت الخطة — أُرسل ${res.notified.students} إشعارًا للطلاب و${res.notified.parents} لأولياء الأمور`,{type:'ok'});
+  },
+  saveAsg(){
+    const f=P.newAsg; const b=P.ws;
+    if(!f||!b)return;
+    if(!f.title.trim()){ toast('أدخل عنوان الواجب/الاختبار',{type:'warn'}); return; }
+    if(!f.sectionKey){ toast('اختر الشعبة',{type:'warn'}); return; }
+    if(!f.dueDate){ toast('حدد تاريخ التسليم',{type:'warn'}); return; }
+    const a=createAssignment(db,{teacherId:ME.id,subject:f.subject,sectionKey:f.sectionKey,type:f.type,
+      title:f.title.trim(),instructions:f.instructions,dueDate:f.dueDate,maxScore:f.maxScore,
+      resources:P.resRows.filter(r=>r.name.trim()).map(r=>({name:r.name.trim(),url:r.url||'',fileData:r.fileData||null}))});
+    const np=notifyOnPublish(db,a);
+    P.newAsg=null; P.asgId=a.id; P.wsTab='subs';
+    render(); toast(`📝 نُشر «${a.title}» — أُرسل إشعار لـ ${np.students} طالب و${np.parents} وليّ أمر`,{type:'ok'});
+  },
+  /* --- التقييم --- */
+  setAsg(id){ P.asgId=id; P.wsTab='subs'; render(); },
+  saveGradeFromDom(subId){
+    const sc=document.getElementById('gs_'+subId);
+    const fc=document.getElementById('gf_'+subId);
+    T.saveGrade(subId,sc?sc.value:'',fc?fc.value:'');
+  },
+  saveGrade(subId,score,feedback){
+    const s=(db.submissions||[]).find(x=>x.id===subId); if(!s) return;
+    const a=(db.assignments||[]).find(x=>x.id===s.assignmentId);
+    const n=parseInt(score);
+    if(score===''||n==null||n<0){ toast('أدخل الدرجة أولًا',{type:'warn'}); return; }
+    if(n>(a?a.maxScore:100)){ toast(`الدرجة أعلى من العظمى (${a.maxScore})`,{type:'warn'}); return; }
+    gradeSubmission(db,subId,n,feedback);
+    const sub=(loadDB().submissions||[]).find(x=>x.id===subId);
+    notifyOnGrade(db,sub,n,a?a.maxScore:100);
+    render(); toast(`✅ سُجّلت العلامة ${n}/${a?a.maxScore:''} — أُرسل إشعار للطالب وولي الأمر`,{type:'ok'});
+  },
+  /* --- الحضور --- */
+  setAttSec(k){ P.secKey=k; P.attDraft={}; render(); },
+  setAttDate(v){ P.attDate=v; P.attDraft={}; render(); },
+  attStatus(id,v){ P.attDraft[id].status=v; if(v!=='excused')P.attDraft[id].notify=true; render(); },
+  attExcuse(id,v){ P.attDraft[id].excuse=v; render(); },
+  attNotify(id,v){ P.attDraft[id].notify=v; },
+  attAllPresent(){
+    Object.keys(P.attDraft).forEach(id=>{ P.attDraft[id]={status:'present',excuse:EXCUSES[0],notify:true}; });
+    render();
+  },
+  saveAtt(){
+    const sec=secOf(P.secKey)||MY_SECS[0]; if(!sec) return;
+    const key=secKey(sec);
+    let n=0,not=0;
+    studentsOfSection(db,key).forEach(s=>{
+      const d=P.attDraft[s.id]; if(!d) return;
+      const r=setAttendance(db,P.attDate,key,s.id,d.status,d.excuse,d.notify);
+      n++; if(r.notified)not++;
+    });
+    P.attDraft={}; render();
+    toast(`🗓️ حُفظ حضور ${n} طالبًا بتاريخ ${P.attDate}${not?` · أُرسل ${not} إشعارًا لأولياء الأمور`:''}`,{type:'ok'});
+  },
+  /* --- المحادثات --- */
+  openChat(id){ P.chatId=id; render(); },
+  newChat(v){
+    if(!v) return;
+    const [role,id]=v.split(':');
+    const c=startConversation(db,{role,id},{role:ME.role,id:ME.id});
+    P.chatId=c.id; render();
+    toast('بدأت محادثة فردية جديدة');
+  },
+  sendMsg(){
+    const el=document.getElementById('chatbox');
+    if(!el||!el.value.trim()||!P.chatId) return;
+    addMessage(db,P.chatId,{role:ME.role,id:ME.id},el.value.trim());
+    render();
+    const m=document.getElementById('msgs'); if(m)m.scrollTop=m.scrollHeight;
+  },
+  /* --- الكشوف --- */
+  openRc(id){ P.rcStudent=id; render(); },
+  closeRc(){ P.rcStudent=null; render(); },
+  /* --- السلوك --- */
+  goBehavior(studentId){ P.ws=null; P.tab='behav'; P.behavStudent=studentId||P.behavStudent; P.behavResult=null; render(); },
+  behavStudent(id){ P.behavStudent=id; P.behavBehaviorId=null; P.behavNote=''; P.behavAction=''; P.behavResult=null; render(); },
+  behavKind(k){ P.behavKind=k; P.behavBehaviorId=null; P.behavNotify=(k==='negative'); render(); },
+  behavBehavior(id){ P.behavBehaviorId=id; render(); },
+  behavNote(v){ P.behavNote=v; },
+  behavAction(v){ P.behavAction=v; },
+  behavNotify(v){ P.behavNotify=!!v; },
+  record(){
+    const st=studentById(db,P.behavStudent);
+    if(!st){ toast('اختر الطالب أولًا',{type:'warn'}); return; }
+    const kind=P.behavKind;
+    const list=db.behaviors[kind]||[];
+    const b=list.find(x=>x.id===P.behavBehaviorId)||list[0];
+    if(!b){ toast('لا سلوكيات في القائمة — هيّئها من شاشة إدارة السلوك',{type:'warn'}); return; }
+    const res=recordBehavior(db,{studentId:st.id,teacherId:ME.id,kind,behaviorId:b.id,note:P.behavNote.trim(),action:P.behavAction.trim(),notifyParent:true});
+    if(!res)return;
+    P.behavResult=res; P.behavNote=''; P.behavAction='';
+    render();
+    if(res.fired.stages.length)toast(`⚠️ سُجّل السلوك وتفعّلت مرحلة «${res.fired.stages[0].name}» — فُتحت حالة متابعة وأُرسلت الإشعارات`,{type:'warn'});
+    else if(res.fired.levels.length)toast(`🏆 سُجّل السلوك وحقق ${st.name} مستوى «${res.fired.levels[0].name}»`,{type:'ok'});
+    else toast(`✅ سُجّل في سجل ${st.name}${res.notified.parent?' وأُرسلت لولي الأمر':''}`,{type:'ok'});
+  },
+  /* --- الملاحظات --- */
+  noteStudent(id){ P.noteStudent=id; P.noteText=''; render(); },
+  noteKind(k){ P.noteKind=k; render(); },
+  noteText(v){ P.noteText=v; },
+  sendNote(){
+    const b=P.ws; if(!b)return;
+    const txt=P.noteText.trim();
+    if(!P.noteStudent){ toast('اختر الطالب أولًا',{type:'warn'}); return; }
+    if(!txt){ toast('اكتب نص الملاحظة',{type:'warn'}); return; }
+    const st=studentById(db,P.noteStudent);
+    createNote(db,{studentId:P.noteStudent,sectionKey:b.key,subject:b.subject,teacherId:ME.id,kind:P.noteKind,text:txt});
+    P.noteText=''; render();
+    toast(`📝 أُرسلت الملاحظة إلى ${st?st.name:''} وولي أمره`,{type:'ok'});
+  },
+  /* --- الإشعارات والخروج --- */
+  showNotifs(){
+    const ns=notificationsFor(db,ME.role,ME.id).sort((a,b)=>b.at.localeCompare(a.at));
+    $('#modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)T.closeModal()">
+      <div class="modal"><h3>🔔 الإشعارات</h3>
+      ${ns.map(n=>`<div class="notif ${n.read?'':'unread'}">${esc(n.text)}<span class="t">${n.at}${n.read?'':' · غير مقروء'}</span></div>`).join('')||'<div class="hint">لا إشعارات</div>'}
+      <div class="row" style="margin-top:14px">
+        <button class="btn ghost" onclick="T.closeModal()">إغلاق</button>
+        <button class="btn outline-p" onclick="T.markRead()">تعليم الكل كقراءة</button>
+      </div></div></div>`;
+  },
+  markRead(){ markNotifsRead(db,ME.role,ME.id); T.showNotifs(); render(); },
+  closeModal(){ $('#modal-root').innerHTML=''; },
+  logout(){ setSession(null); location.href='portal.html'; }
+};
+render();
+</script>
+</body>
+</html>
